@@ -143,24 +143,34 @@ impl Client {
     ///     2, addrs_to_get to hold the addresses for further track
     pub async fn crawl_to_next_utxos(
         &self,
-        addrs_to_get: &mut BTreeSet<(SpendAddress, NanoTokens)>,
+        addrs_to_get: &mut BTreeMap<SpendAddress, (u64, NanoTokens)>,
         sender: Sender<(SignedSpend, u64, bool)>,
-        reattempt_interval: Duration,
-    ) -> WalletResult<BTreeMap<SpendAddress, (Instant, NanoTokens)>> {
+        reattempt_seconds: u64,
+    ) -> WalletResult<(
+        BTreeMap<SpendAddress, (u64, Instant, NanoTokens)>,
+        Vec<SpendAddress>,
+    )> {
         let mut failed_utxos = BTreeMap::new();
         let mut tasks = JoinSet::new();
         let mut addrs_for_further_track = BTreeSet::new();
+        let mut fetched_addrs = Vec::new();
 
         while !addrs_to_get.is_empty() || !tasks.is_empty() {
             while tasks.len() < 32 && !addrs_to_get.is_empty() {
-                if let Some((addr, amount)) = addrs_to_get.pop_first() {
+                if let Some((addr, (failed_times, amount))) = addrs_to_get.pop_first() {
                     let client_clone = self.clone();
-                    let _ = tasks
-                        .spawn(async move { (client_clone.crawl_spend(addr).await, addr, amount) });
+                    let _ = tasks.spawn(async move {
+                        (
+                            client_clone.crawl_spend(addr).await,
+                            failed_times,
+                            addr,
+                            amount,
+                        )
+                    });
                 }
             }
 
-            if let Some(Ok((result, address, amount))) = tasks.join_next().await {
+            if let Some(Ok((result, failed_times, address, amount))) = tasks.join_next().await {
                 match result {
                     InternalGetNetworkSpend::Spend(spend) => {
                         let for_further_track = beta_track_analyze_spend(&spend);
@@ -169,6 +179,7 @@ impl Client {
                             .await
                             .map_err(|e| WalletError::SpendProcessing(e.to_string()));
                         addrs_for_further_track.extend(for_further_track);
+                        fetched_addrs.push(address);
                     }
                     InternalGetNetworkSpend::DoubleSpend(spends) => {
                         warn!(
@@ -188,27 +199,45 @@ impl Client {
                                 .await
                                 .map_err(|e| WalletError::SpendProcessing(e.to_string()));
                         }
+                        fetched_addrs.push(address);
                     }
                     InternalGetNetworkSpend::NotFound => {
-                        if amount.as_nano() > 100000 {
+                        let reattempt_interval = if amount.as_nano() > 100000 {
                             info!("Not find spend of big-UTXO {address:?} with {amount}");
-                        }
-                        let _ = failed_utxos
-                            .insert(address, (Instant::now() + reattempt_interval, amount));
+                            reattempt_seconds
+                        } else {
+                            reattempt_seconds * (failed_times * 8 + 1)
+                        };
+                        let _ = failed_utxos.insert(
+                            address,
+                            (
+                                failed_times + 1,
+                                Instant::now() + Duration::from_secs(reattempt_interval),
+                                amount,
+                            ),
+                        );
                     }
                     InternalGetNetworkSpend::Error(e) => {
                         warn!("Fetching spend {address:?} with {amount:?} result in error {e:?}");
                         // Error of `NotEnoughCopies` could be re-attempted and succeed eventually.
-                        let _ = failed_utxos
-                            .insert(address, (Instant::now() + reattempt_interval, amount));
+                        let _ = failed_utxos.insert(
+                            address,
+                            (
+                                failed_times + 1,
+                                Instant::now() + Duration::from_secs(reattempt_seconds),
+                                amount,
+                            ),
+                        );
                     }
                 }
             }
         }
 
-        addrs_to_get.extend(addrs_for_further_track);
+        for (addr, amount) in addrs_for_further_track {
+            let _ = addrs_to_get.entry(addr).or_insert((0, amount));
+        }
 
-        Ok(failed_utxos)
+        Ok((failed_utxos, fetched_addrs))
     }
 
     /// Crawls the Spend Dag from a given SpendAddress recursively

@@ -149,6 +149,7 @@ impl Client {
     ) -> WalletResult<(
         BTreeMap<SpendAddress, (u64, Instant, NanoTokens)>,
         Vec<SpendAddress>,
+        BTreeSet<(SpendAddress, NanoTokens)>,
     )> {
         let mut failed_utxos = BTreeMap::new();
         let mut tasks = JoinSet::new();
@@ -233,11 +234,7 @@ impl Client {
             }
         }
 
-        for (addr, amount) in addrs_for_further_track {
-            let _ = addrs_to_get.entry(addr).or_insert((0, amount));
-        }
-
-        Ok((failed_utxos, fetched_addrs))
+        Ok((failed_utxos, fetched_addrs, addrs_for_further_track))
     }
 
     /// Crawls the Spend Dag from a given SpendAddress recursively

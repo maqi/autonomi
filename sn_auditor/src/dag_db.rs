@@ -13,6 +13,7 @@ use color_eyre::eyre::{bail, eyre, Result};
 #[cfg(feature = "svg-dag")]
 use graphviz_rust::{cmd::Format, exec, parse, printer::PrinterContext};
 use lazy_static::lazy_static;
+use lru_time_cache::LruCache;
 use serde::{Deserialize, Serialize};
 use sn_client::transfers::{
     Hash, NanoTokens, SignedSpend, SpendAddress, DEFAULT_PAYMENT_FORWARD_SK,
@@ -303,7 +304,10 @@ impl SpendDagDb {
         };
 
         let mut addrs_to_get = BTreeMap::new();
-        let mut addrs_fetched = BTreeSet::new();
+        let mut addrs_fetched = LruCache::<SpendAddress, ()>::with_expiry_duration_and_capacity(
+            Duration::from_secs(24 * 60 * 60), // 1 day
+            10000,                             // max entries
+        );
 
         loop {
             // get expired utxos for re-attempt fetch
@@ -363,13 +367,13 @@ impl SpendDagDb {
                     let mut utxo_addresses = self.utxo_addresses.write().await;
                     for addr in fetched_addrs {
                         let _ = utxo_addresses.remove(&addr);
-                        let _ = addrs_fetched.insert(addr);
+                        let _ = addrs_fetched.insert(addr, ());
                     }
                     for (addr, tuple) in reattempt_addrs {
                         let _ = utxo_addresses.insert(addr, tuple);
                     }
                     for (addr, amount) in addrs_for_further_track {
-                        if !addrs_fetched.contains(&addr) {
+                        if !addrs_fetched.contains_key(&addr) {
                             let _ = addrs_to_get.entry(addr).or_insert((0, amount));
                         }
                     }

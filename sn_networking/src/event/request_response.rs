@@ -210,8 +210,10 @@ impl SwarmDriver {
             incoming_keys.len()
         );
 
-        // accept replication requests from all peers known peers within our GetRange
-        if !peers.contains(&holder) || holder == our_peer_id {
+        // accept replication requests from the K_VALUE peers away,
+        // giving us some margin for replication
+        let closest_k_peers = self.get_closest_k_value_local_peers();
+        if !closest_k_peers.contains(&holder) || holder == self.self_peer_id {
             trace!("Holder {holder:?} is self or not in replication range.");
             return;
         }

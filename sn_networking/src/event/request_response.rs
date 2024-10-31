@@ -275,6 +275,12 @@ impl SwarmDriver {
                 )
                 .unwrap_or_default();
 
+                if close_group_peers.len() < CLOSE_GROUP_SIZE {
+                    info!("Not having enough close_group_peers ({}/{CLOSE_GROUP_SIZE}) to carry out peer ChunkProofVerification",
+                        close_group_peers.len());
+                    return;
+                }
+
                 loop {
                     let index: usize = OsRng.gen_range(0..close_group_peers.len());
                     let candidate_peer_id = *close_group_peers[index];

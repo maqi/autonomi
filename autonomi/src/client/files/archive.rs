@@ -55,7 +55,6 @@ impl Metadata {
             .as_secs();
 
         Self {
-            uploaded: now,
             created: now,
             modified: now,
             size,

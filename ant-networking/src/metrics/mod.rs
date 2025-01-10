@@ -8,6 +8,7 @@
 
 // Implementation to record `libp2p::upnp::Event` metrics
 mod bad_node;
+mod relay_client;
 pub mod service;
 #[cfg(feature = "upnp")]
 mod upnp;
@@ -39,6 +40,7 @@ pub(crate) struct NetworkMetricsRecorder {
     libp2p_metrics: Libp2pMetrics,
     #[cfg(feature = "upnp")]
     upnp_events: Family<upnp::UpnpEventLabels, Counter>,
+    relay_client_events: Family<relay_client::RelayClientEventLabels, Counter>,
 
     // metrics from ant-networking
     pub(crate) connected_peers: Gauge,
@@ -136,6 +138,13 @@ impl NetworkMetricsRecorder {
             upnp_events.clone(),
         );
 
+        let relay_client_events = Family::default();
+        sub_registry.register(
+            "relay_client_events",
+            "Events emitted by the relay client",
+            relay_client_events.clone(),
+        );
+
         let process_memory_used_mb = Gauge::<f64, AtomicU64>::default();
         sub_registry.register(
             "process_memory_used_mb",
@@ -211,6 +220,7 @@ impl NetworkMetricsRecorder {
             libp2p_metrics,
             #[cfg(feature = "upnp")]
             upnp_events,
+            relay_client_events,
 
             records_stored,
             estimated_network_size,

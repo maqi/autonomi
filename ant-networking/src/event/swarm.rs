@@ -55,6 +55,10 @@ impl SwarmDriver {
                 self.handle_kad_event(kad_event)?;
             }
             SwarmEvent::Behaviour(NodeEvent::RelayClient(event)) => {
+                #[cfg(feature = "open-metrics")]
+                if let Some(metrics_recorder) = &self.metrics_recorder {
+                    metrics_recorder.record(&(*event));
+                }
                 event_string = "relay_client_event";
 
                 info!(?event, "relay client event");

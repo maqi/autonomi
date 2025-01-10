@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 *When editing this file, please respect a line length of 100.*
 
+## 2025-01-09
+
+## Network
+
+### Changed
+
+- Network discovery no longer queries the farthest full buckets. This significantly reduces the
+  number of messages as the network grows, resulting in fewer open connections and reduced resource
+  usage.
+
 ## 2024-12-21
 
 ### Network

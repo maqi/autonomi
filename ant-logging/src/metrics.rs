@@ -8,7 +8,7 @@
 
 use serde::Serialize;
 use std::time::Duration;
-use sysinfo::{self, Networks, Pid, System};
+use sysinfo::{self, Networks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tracing::{debug, error};
 
 const UPDATE_INTERVAL: Duration = Duration::from_secs(15);
@@ -44,9 +44,9 @@ struct ProcessMetrics {
 // Obtains the system metrics every UPDATE_INTERVAL and logs it.
 // The function should be spawned as a task and should be re-run if our main process is restarted.
 pub async fn init_metrics(pid: u32) {
-    let mut sys = System::new_all();
     let mut networks = Networks::new_with_refreshed_list();
     let pid = Pid::from_u32(pid);
+    let mut sys = System::new();
 
     loop {
         refresh_metrics(&mut sys, &mut networks, pid);
@@ -70,10 +70,10 @@ pub async fn init_metrics(pid: u32) {
             }
         };
 
-        let cpu_stat = sys.global_cpu_info();
+        let system_cpu_usage_percent = sys.global_cpu_usage();
         let metrics = Metrics {
             physical_cpu_threads: sys.cpus().len(),
-            system_cpu_usage_percent: cpu_stat.cpu_usage(),
+            system_cpu_usage_percent,
             process,
         };
         match serde_json::to_string(&metrics) {
@@ -87,8 +87,17 @@ pub async fn init_metrics(pid: u32) {
 
 // Refreshes only the metrics that we interested in.
 fn refresh_metrics(sys: &mut System, networks: &mut Networks, pid: Pid) {
-    sys.refresh_process(pid);
     sys.refresh_memory();
-    sys.refresh_cpu();
-    networks.refresh();
+    sys.refresh_cpu_usage();
+    networks.refresh(true);
+
+    // To refresh only the specific process:
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing()
+            .with_cpu()
+            .with_disk_usage()
+            .with_memory(),
+    );
 }

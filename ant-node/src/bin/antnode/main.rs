@@ -413,7 +413,7 @@ You can check your reward balance by running:
         }
     });
     let ctrl_tx_clone_cpu = ctrl_tx.clone();
-    // Monitor host CPU usage
+    // Monitor Host CPU usage
     tokio::spawn(async move {
         use rand::{thread_rng, Rng};
 
@@ -427,9 +427,10 @@ You can check your reward balance by running:
         const JITTER_MIN_S: u64 = 1;
         const JITTER_MAX_S: u64 = 15;
 
-        let mut sys = System::new_all();
-
         let mut high_cpu_count: u8 = 0;
+
+        let mut system = System::new();
+        system.refresh_cpu_usage();
 
         // Random initial delay between 1 and 5 minutes
         let initial_delay =
@@ -437,8 +438,10 @@ You can check your reward balance by running:
         tokio::time::sleep(initial_delay).await;
 
         loop {
-            sys.refresh_cpu();
-            let cpu_usage = sys.global_cpu_info().cpu_usage();
+            system.refresh_cpu_usage();
+
+            let cpu_usage = system.global_cpu_usage();
+            info!("Detected Host CPU usage is {cpu_usage:?}.");
 
             if cpu_usage > CPU_USAGE_THRESHOLD {
                 high_cpu_count += 1;
@@ -458,7 +461,6 @@ You can check your reward balance by running:
                 }
                 break;
             }
-
             // Add jitter to the interval
             let jitter = Duration::from_secs(thread_rng().gen_range(JITTER_MIN_S..=JITTER_MAX_S));
             tokio::time::sleep(CPU_CHECK_INTERVAL + jitter).await;

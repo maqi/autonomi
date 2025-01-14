@@ -25,7 +25,7 @@ use prometheus_client::{
     metrics::family::Family,
     metrics::{counter::Counter, gauge::Gauge},
 };
-use sysinfo::{Pid, ProcessRefreshKind, System};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::time::Duration;
 
 const UPDATE_INTERVAL: Duration = Duration::from_secs(15);
@@ -246,12 +246,19 @@ impl NetworkMetricsRecorder {
 
         let pid = Pid::from_u32(std::process::id());
         let process_refresh_kind = ProcessRefreshKind::everything().without_disk_usage();
-        let mut system = System::new_all();
+
+        let mut system = System::new();
         let physical_core_count = system.physical_core_count();
+        info!("Detected physical_core_count {physical_core_count:?}");
 
         tokio::spawn(async move {
             loop {
-                system.refresh_process_specifics(pid, process_refresh_kind);
+                system.refresh_processes_specifics(
+                    ProcessesToUpdate::Some(&[pid]),
+                    true,
+                    process_refresh_kind,
+                );
+
                 if let (Some(process), Some(core_count)) =
                     (system.process(pid), physical_core_count)
                 {
@@ -264,6 +271,7 @@ impl NetworkMetricsRecorder {
                         / 10000.0;
                     let _ = process_cpu_usage_percentage.set(cpu_usage);
                 }
+
                 sleep(UPDATE_INTERVAL).await;
             }
         });

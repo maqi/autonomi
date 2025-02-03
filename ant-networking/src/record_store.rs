@@ -435,26 +435,35 @@ impl NodeRecordStore {
     fn get_record_from_bytes<'a>(
         bytes: Vec<u8>,
         key: &Key,
-        encryption_details: &(Aes256GcmSiv, [u8; 4]),
+        _encryption_details: &(Aes256GcmSiv, [u8; 4]),
     ) -> Option<Cow<'a, Record>> {
-        let (cipher, nonce_starter) = encryption_details;
-        let nonce = generate_nonce_for_record(nonce_starter, key);
+        let record = Record {
+            key: key.clone(),
+            value: bytes,
+            publisher: None,
+            expires: None,
+        };
 
-        match cipher.decrypt(&nonce, bytes.as_slice()) {
-            Ok(value) => {
-                let record = Record {
-                    key: key.clone(),
-                    value,
-                    publisher: None,
-                    expires: None,
-                };
-                Some(Cow::Owned(record))
-            }
-            Err(error) => {
-                error!("Error while decrypting record. key: {key:?}: {error:?}");
-                None
-            }
-        }
+        Some(Cow::Owned(record))
+
+        // let (cipher, nonce_starter) = encryption_details;
+        // let nonce = generate_nonce_for_record(nonce_starter, key);
+
+        // match cipher.decrypt(&nonce, bytes.as_slice()) {
+        //     Ok(value) => {
+        //         let record = Record {
+        //             key: key.clone(),
+        //             value,
+        //             publisher: None,
+        //             expires: None,
+        //         };
+        //         Some(Cow::Owned(record))
+        //     }
+        //     Err(error) => {
+        //         error!("Error while decrypting record. key: {key:?}: {error:?}");
+        //         None
+        //     }
+        // }
     }
 
     fn read_from_disk<'a>(
@@ -638,21 +647,23 @@ impl NodeRecordStore {
     /// This will encrypt the record for storage
     fn prepare_record_bytes(
         record: Record,
-        encryption_details: (Aes256GcmSiv, [u8; 4]),
+        _encryption_details: (Aes256GcmSiv, [u8; 4]),
     ) -> Option<Vec<u8>> {
-        let (cipher, nonce_starter) = encryption_details;
-        let nonce = generate_nonce_for_record(&nonce_starter, &record.key);
+        Some(record.value)
 
-        match cipher.encrypt(&nonce, record.value.as_ref()) {
-            Ok(value) => Some(value),
-            Err(error) => {
-                warn!(
-                    "Failed to encrypt record {:?} : {error:?}",
-                    PrettyPrintRecordKey::from(&record.key),
-                );
-                None
-            }
-        }
+        // let (cipher, nonce_starter) = encryption_details;
+        // let nonce = generate_nonce_for_record(&nonce_starter, &record.key);
+
+        // match cipher.encrypt(&nonce, record.value.as_ref()) {
+        //     Ok(value) => Some(value),
+        //     Err(error) => {
+        //         warn!(
+        //             "Failed to encrypt record {:?} : {error:?}",
+        //             PrettyPrintRecordKey::from(&record.key),
+        //         );
+        //         None
+        //     }
+        // }
     }
 
     /// Warning: Write's a `Record` to disk without validation

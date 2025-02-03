@@ -206,7 +206,7 @@ impl Client {
 
     /// Initialize the client with the given configuration.
     ///
-    /// This will block until `CLOSE_GROUP_SIZE` have been added to the routing table.
+    /// This will block until [`CLOSE_GROUP_SIZE`] have been added to the routing table.
     ///
     /// See [`ClientConfig`].
     ///

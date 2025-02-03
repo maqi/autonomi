@@ -1159,12 +1159,8 @@ impl SwarmDriver {
         &mut self,
         target: &NetworkAddress,
     ) -> Result<Vec<PeerId>> {
-        let is_periodic_replicate = target.as_peer_id().is_some();
-        let expected_candidates = if is_periodic_replicate {
-            K_VALUE.into()
-        } else {
-            CLOSE_GROUP_SIZE
-        };
+        // let is_periodic_replicate = target.as_peer_id().is_some();
+        let expected_candidates = CLOSE_GROUP_SIZE + 2;
 
         // get closest peers from buckets, sorted by increasing distance to the target
         let kbucket_key = target.as_kbucket_key();

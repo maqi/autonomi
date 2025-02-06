@@ -1187,7 +1187,7 @@ impl SwarmDriver {
     ) -> Result<Vec<PeerId>> {
         let is_periodic_replicate = target.as_peer_id().is_some();
         let expected_candidates = if is_periodic_replicate {
-            K_VALUE.into()
+            CLOSE_GROUP_SIZE * 2
         } else {
             CLOSE_GROUP_SIZE
         };

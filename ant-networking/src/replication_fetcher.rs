@@ -396,7 +396,7 @@ impl ReplicationFetcher {
                 .entry(addr_val_type.clone())
                 .or_default();
             let _ = peers.insert(*holder);
-            if peers.len() > CLOSE_GROUP_SIZE / 2 {
+            if peers.len() >= CLOSE_GROUP_SIZE / 2 {
                 majorities.push(addr_val_type);
             }
         }

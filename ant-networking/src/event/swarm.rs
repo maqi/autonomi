@@ -310,7 +310,9 @@ impl SwarmDriver {
                                     let problematic_errors = [
                                         "ConnectionRefused",
                                         "HostUnreachable",
-                                        "HandshakeTimedOut",
+                                        // No longer consider HandshakeTimedOut as an issue,
+                                        // due to the libp2p version upgrade.
+                                        // "HandshakeTimedOut",
                                     ];
 
                                     let is_bootstrap_peer = self

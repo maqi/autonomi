@@ -415,7 +415,7 @@ impl SwarmDriver {
                 // And since we don't do anything critical with this event, the order and time of processing is
                 // not critical.
                 if self.is_incoming_connection_error_valid(connection_id, &send_back_addr) {
-                    error!("IncomingConnectionError from local_addr:?{local_addr:?}, send_back_addr {send_back_addr:?} on {connection_id:?} with error {error:?}");
+                    error!("IncomingConnectionError Valid from local_addr:?{local_addr:?}, send_back_addr {send_back_addr:?} on {connection_id:?} with error {error:?}");
 
                     // This is best approximation that we can do to prevent harmless errors from affecting the external
                     // address health.
@@ -424,16 +424,14 @@ impl SwarmDriver {
                             .on_incoming_connection_error(local_addr.clone(), &mut self.swarm);
                     }
                 } else {
-                    debug!("IncomingConnectionError from local_addr:?{local_addr:?}, send_back_addr {send_back_addr:?} on {connection_id:?} with error {error:?}");
+                    debug!("IncomingConnectionError InValid from local_addr:?{local_addr:?}, send_back_addr {send_back_addr:?} on {connection_id:?} with error {error:?}");
                 }
-                if let Some(external_addr_manager) = self.external_address_manager.as_mut() {
-                    external_addr_manager
-                        .on_incoming_connection_error(local_addr.clone(), &mut self.swarm);
-                }
+
                 #[cfg(feature = "open-metrics")]
                 if let Some(relay_manager) = self.relay_manager.as_mut() {
                     relay_manager.on_incomming_connection_error(&send_back_addr, &connection_id);
                 }
+
                 let _ = self.live_connected_peers.remove(&connection_id);
                 self.record_connection_metrics();
             }

@@ -21,7 +21,7 @@ use std::collections::{hash_map::Entry, BTreeMap, HashMap, HashSet, VecDeque};
 use tokio::{sync::mpsc, time::Duration};
 
 // Max parallel fetches that can be undertaken at the same time.
-const MAX_PARALLEL_FETCH: usize = K_VALUE.get();
+const MAX_PARALLEL_FETCH: usize = K_VALUE.get() / 2;
 
 // The duration after which a peer will be considered failed to fetch data from,
 // if no response got from that peer.

@@ -498,7 +498,7 @@ impl ReplicationFetcher {
     fn is_peer_trustworthy(&self, holder: &PeerId) -> Option<bool> {
         if let Some((scores, _last_seen)) = self.peers_scores.get(holder) {
             if scores.len() > 1 {
-                let is_healthy = scores.iter().filter(|is_health| **is_health).count() > 1;
+                let is_healthy = scores.iter().filter(|is_health| **is_health).count() >= 1;
                 if !is_healthy {
                     info!("Peer {holder:?} is not a trustworthy replication source, as bearing scores of {scores:?}");
                 }

@@ -31,7 +31,7 @@ The application accepts various command-line arguments to configure the reward d
 
 ```bash
 USAGE:
-    ant_rewards_service [OPTIONS]
+    ./ant_rewards_service [OPTIONS]
 
 OPTIONS:
         --local
@@ -68,15 +68,23 @@ If you do not pass a private key, the service will create an ephemeral wallet an
 
 1. **Connect to Local Network**:
    ```bash
-   your-app-name --local
+   ./ant_rewards_service --local
    ```
 
 2. **Configure with All Parameters**:
    ```bash
-   your-app-name \
+   ./ant_rewards_service \
        --return_address 0x1234567890abcdef1234567890abcdef12345678 \
        --reward_interval_secs 60 \
        --reward_amount 100000000000 \
        --reward_peers 100 \
        --payout_interval_secs 21600
+   ```
+
+### Debugging
+
+You can also run the application with additional logging:
+
+   ```bash
+   RUST_LOG=ant_rewards_service=all ./ant_rewards_service
    ```

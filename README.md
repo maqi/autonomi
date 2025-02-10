@@ -57,6 +57,13 @@ OPTIONS:
             [Default: 21600]
 ```
 
+The application also accepts the following optional environment variables:
+
+- `PRIVATE_KEY`: Start the service with a pre-determined wallet private key. Note that even when you specify a private
+  key, all funds when closing the application will still be send to the return address.
+
+If you do not pass a private key, the service will create an ephemeral wallet and print the wallet address.
+
 ### Example Commands
 
 1. **Connect to Local Network**:

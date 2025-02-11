@@ -34,12 +34,6 @@ USAGE:
     ./ant_rewards_service [OPTIONS]
 
 OPTIONS:
-        --local
-            Connect to a local Autonomi network for testing.
-            
-        --log-file
-            Log to a file in `./logs/app.log` (must have set a log level using `RUST_LOG`).
-
         --return-address <ADDRESS>
             Wallet address to return leftover funds to (in hexadecimal format).
 
@@ -58,6 +52,12 @@ OPTIONS:
         --payout-interval-secs <SECONDS>
             Interval in seconds for payout scheduling.
             [Default: 21600]
+            
+        --local
+            Connect to a local Autonomi network for testing.
+            
+        --log-file
+            Log to a file in `./logs/app.log` (must have set a log level using `RUST_LOG`).    
 ```
 
 The application also accepts the following optional environment variables:

@@ -15,12 +15,6 @@ pub(crate) struct Config {
 #[command(disable_version_flag = true)]
 #[command(author, version, about, long_about = None)]
 pub(crate) struct Opt {
-    #[clap(long, default_value_t = false)]
-    /// Connect to a local Autonomi network for testing.
-    pub local: bool,
-    #[clap(long, default_value_t = false)]
-    /// Log to a file in `./logs/app.log`.
-    pub log_file: bool,
     #[clap(long)]
     /// Wallet address to return leftover funds to.
     pub return_address: String,
@@ -36,6 +30,12 @@ pub(crate) struct Opt {
     #[clap(long, default_value_t = 21600)]
     /// Interval in secs of when the rewards will be paid out.
     pub payout_interval_secs: u32,
+    #[clap(long, default_value_t = false)]
+    /// Connect to a local Autonomi network for testing.
+    pub local: bool,
+    #[clap(long, default_value_t = false)]
+    /// Log to a file in `./logs/app.log`.
+    pub log_file: bool,
 }
 
 impl Opt {

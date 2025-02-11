@@ -174,6 +174,8 @@ pub async fn start_reward_distribution_round(
     config: Config,
     rewards_distribution_rounds: RewardDistributionRounds,
 ) -> eyre::Result<()> {
+    let start_time = std::time::Instant::now();
+
     let peer_reward_addresses =
         pick_random_network_peer_reward_addresses(&client, config.reward_peers_amount).await?;
 
@@ -188,6 +190,11 @@ pub async fn start_reward_distribution_round(
         .lock()
         .await
         .push_back(reward_distribution);
+
+    tracing::info!(
+        "Reward distribution round completed in {} seconds.",
+        start_time.elapsed().as_secs()
+    );
 
     Ok(())
 }

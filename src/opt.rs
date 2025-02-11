@@ -18,6 +18,9 @@ pub(crate) struct Opt {
     #[clap(long, default_value_t = false)]
     /// Connect to a local Autonomi network for testing.
     pub local: bool,
+    #[clap(long, default_value_t = false)]
+    /// Log to a file in `./logs/app.log`.
+    pub log_file: bool,
     #[clap(long)]
     /// Wallet address to return leftover funds to.
     pub return_address: String,

@@ -9,9 +9,10 @@ use eyre::eyre;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    logging::setup_logging();
-
     let opt = opt::Opt::parse();
+
+    // Setup logging.
+    logging::setup_logging(opt.log_file);
 
     // Tries to get the network from env first `EVM_NETWORK`.
     let network = autonomi::Network::new(false).unwrap_or_default();

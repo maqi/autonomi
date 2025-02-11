@@ -36,23 +36,26 @@ USAGE:
 OPTIONS:
         --local
             Connect to a local Autonomi network for testing.
+            
+        --log-file
+            Log to a file in `./logs/app.log` (must have set a log level using `RUST_LOG`).
 
-        --return_address <ADDRESS>
+        --return-address <ADDRESS>
             Wallet address to return leftover funds to (in hexadecimal format).
 
-        --reward_interval_secs <SECONDS> 
+        --reward-interval-secs <SECONDS> 
             Interval in seconds between reward distribution rounds.
             [Default: 60]
 
-        --reward_amount <AMOUNT>
+        --reward-amount <AMOUNT>
             Reward per peer in Atto.
             [Default: 100000000000]
 
-        --reward_peers <PEER_COUNT>
+        --reward-peers <PEER_COUNT>
             Number of peers rewarded per distribution round.
             [Default: 100]
 
-        --payout_interval_secs <SECONDS>
+        --payout-interval-secs <SECONDS>
             Interval in seconds for payout scheduling.
             [Default: 21600]
 ```

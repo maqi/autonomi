@@ -908,6 +908,7 @@ dependencies = [
  "hex",
  "tokio",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
  "xor_name",
 ]

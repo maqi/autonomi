@@ -1,5 +1,5 @@
 use crate::opt::Config;
-use crate::utils::{random_address, random_rewards_address};
+use crate::utils::random_address;
 use autonomi::client::quote::DataTypes;
 use autonomi::{Amount, Client, QuoteHash, RewardsAddress, Wallet};
 use std::collections::{HashMap, VecDeque};

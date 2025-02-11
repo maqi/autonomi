@@ -9,7 +9,7 @@ This service distributes ANT token rewards to random nodes on the Autonomi netwo
 2. Clone this repository.
 
    ```bash
-   git clone https://github.com/maidsafe/ant-rewards-service
+   git clone git@github.com:maidsafe/ant-rewards-service.git
    cd ant-rewards-service
    ```
 

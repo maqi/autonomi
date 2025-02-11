@@ -79,7 +79,10 @@ pub async fn send_all_funds_to_return_address(
 
     // Return tokens.
     let token_balance = wallet.balance_of_tokens().await?;
-    let _ = wallet.transfer_tokens(return_address, token_balance).await;
+
+    if token_balance > Amount::ZERO {
+        let _ = wallet.transfer_tokens(return_address, token_balance).await;
+    }
 
     // Return gas.
     let mut gas_balance = wallet.balance_of_gas_tokens().await?;
@@ -87,9 +90,11 @@ pub async fn send_all_funds_to_return_address(
     // Leave a margin to pay for the transaction gas.
     gas_balance = gas_balance.saturating_sub(Amount::from(BASE_GAS_FEE));
 
-    let _ = wallet
-        .transfer_gas_tokens(return_address, gas_balance)
-        .await;
+    if gas_balance > Amount::from(BASE_GAS_FEE) {
+        let _ = wallet
+            .transfer_gas_tokens(return_address, gas_balance)
+            .await;
+    }
 
     Ok(())
 }

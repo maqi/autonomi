@@ -220,6 +220,7 @@ pub async fn pick_random_network_peer_reward_addresses(
 
         // No more quotes left.
         if !popped {
+            tracing::error!("Could not get the requested amount of random peer reward addresses. Will continue with the current set of peer reward addresses.");
             break;
         }
     }

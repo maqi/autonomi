@@ -48,7 +48,8 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
 
                 tokio::spawn(async move {
-                   let _ = start_reward_distribution_round(client_clone, config_clone, rewards_distribution_rounds_clone).await;
+                   let _ = start_reward_distribution_round(client_clone, config_clone, rewards_distribution_rounds_clone).await
+                        .inspect_err(|err| tracing::error!("Error during reward distribution: {err:?}"));
                 });
             }
             _ = payout_interval.tick() => {
@@ -58,7 +59,8 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
 
                 tokio::spawn(async move {
-                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone).await;
+                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone).await
+                        .inspect_err(|err| tracing::error!("Error paying out rewards: {err:?}"));
                     tracing::info!("Rewards paid out.");
                 });
             }
@@ -81,7 +83,10 @@ pub async fn send_all_funds_to_return_address(
     let token_balance = wallet.balance_of_tokens().await?;
 
     if token_balance > Amount::ZERO {
-        let _ = wallet.transfer_tokens(return_address, token_balance).await;
+        let _ = wallet
+            .transfer_tokens(return_address, token_balance)
+            .await
+            .inspect_err(|err| tracing::error!("Error transferring ANT tokens: {err:?}"));
     }
 
     // Return gas.
@@ -93,7 +98,8 @@ pub async fn send_all_funds_to_return_address(
     if gas_balance > Amount::from(BASE_GAS_FEE) {
         let _ = wallet
             .transfer_gas_tokens(return_address, gas_balance)
-            .await;
+            .await
+            .inspect_err(|err| tracing::error!("Error transferring gas tokens: {err:?}"));
     }
 
     Ok(())
@@ -154,7 +160,10 @@ pub async fn payout_rewards(
 
     // todo: use a transfer batching contract here instead of paying for quotes.
     // Pay out all the rewards.
-    let _ = wallet.pay_for_quotes(quote_payments).await;
+    let _ = wallet
+        .pay_for_quotes(quote_payments)
+        .await
+        .inspect_err(|err| tracing::error!("Error paying for quotes: {err:?}"));
 
     Ok(())
 }

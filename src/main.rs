@@ -31,6 +31,8 @@ async fn main() -> eyre::Result<()> {
 
     let config = opt.try_to_config()?;
 
+    println!("Return wallet address: {}", config.return_address);
+
     // Start the service.
     service::run(config, wallet).await
 }

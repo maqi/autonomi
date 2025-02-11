@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-autonomi = { git = "https://github.com/mickvandijke/autonomi", rev = "e2d83bb5252e2e675f935e34bec64b4a2fcbed70" }
+autonomi = { git = "https://github.com/mickvandijke/autonomi/", rev = "44d5f630038b47efb9cc3d719aa7554bda001c20" }
 clap = "4.5.28"
 eyre = "0.6.12"
 tokio = { version = "1.43.0", features = ["rt", "rt-multi-thread", "macros", "signal"] }

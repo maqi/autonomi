@@ -6,12 +6,7 @@ pub fn setup_logging(log_to_file: bool) {
     // Load log level from RUST_LOG
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(""));
 
-    // Create stdout logging layer
-    let stdout_layer = fmt::layer().with_writer(io::stdout);
-
-    let subscriber = tracing_subscriber::registry()
-        .with(env_filter)
-        .with(stdout_layer);
+    let subscriber = tracing_subscriber::registry().with(env_filter);
 
     if log_to_file {
         // Set up file appender with daily log rotation
@@ -21,6 +16,8 @@ pub fn setup_logging(log_to_file: bool) {
         subscriber.with(file_layer).init();
         Box::leak(Box::new(_guard));
     } else {
-        subscriber.init();
+        // Create stdout logging layer
+        let stdout_layer = fmt::layer().with_writer(io::stdout);
+        subscriber.with(stdout_layer).init();
     }
 }

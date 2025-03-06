@@ -9,6 +9,7 @@ use tokio::time::{self, Duration};
 use xor_name::XorName;
 
 const BASE_GAS_FEE: u64 = 100_000_000_000_000;
+const QUOTES_PER_REQUEST: usize = 5;
 
 /// Represents a single rewards distribution round.
 pub type RewardDistribution = HashMap<RewardsAddress, Amount>;
@@ -204,11 +205,12 @@ pub async fn pick_random_network_peer_reward_addresses(
     client: &Client,
     amount: usize,
 ) -> eyre::Result<Vec<RewardsAddress>> {
-    let random_addresses: Vec<(XorName, usize)> =
-        (0..amount).map(|_| (random_address(), 1)).collect();
+    let random_network_addresses: Vec<(XorName, usize)> = (0..amount.div_ceil(QUOTES_PER_REQUEST))
+        .map(|_| (random_address(), 1))
+        .collect();
 
     let raw_quotes = client
-        .get_raw_quotes(DataTypes::Chunk, random_addresses.into_iter())
+        .get_raw_quotes(DataTypes::Chunk, random_network_addresses.into_iter())
         .await;
 
     let mut content_addr_quotes: Vec<_> = raw_quotes.into_iter().flatten().collect();

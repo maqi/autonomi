@@ -1,5 +1,5 @@
 use crate::opt::Config;
-use crate::utils::random_address;
+use crate::utils::{random_address, usize_to_u8_array};
 use autonomi::client::quote::DataTypes;
 use autonomi::{Amount, Client, QuoteHash, RewardsAddress, Wallet};
 use std::collections::{HashMap, VecDeque};
@@ -156,15 +156,37 @@ pub async fn payout_rewards(
     // Gather all the rewards as quote payments.
     let quote_payments: Vec<_> = combined_rewards
         .into_iter()
-        .map(|(address, amount)| (QuoteHash::ZERO, address, amount))
+        .enumerate()
+        .map(|(i, (address, amount))| (QuoteHash::from(usize_to_u8_array(i)), address, amount))
         .collect();
 
     // todo: use a transfer batching contract here instead of paying for quotes.
     // Pay out all the rewards.
-    let _ = wallet
-        .pay_for_quotes(quote_payments)
-        .await
-        .inspect_err(|err| tracing::error!("Error paying for quotes: {err:?}"));
+    if let Err(err) = wallet.pay_for_quotes(quote_payments.clone()).await {
+        tracing::error!("Error paying for quotes: {:?}", err.0);
+        tracing::error!(
+            "{} quote(s) were successfully paid. {} quote(s) failed",
+            err.1.len(),
+            quote_payments.len() - err.1.len()
+        );
+
+        let failed_quote_payments: Vec<_> = quote_payments
+            .into_iter()
+            .filter(|(qh, _, _)| !err.1.contains_key(qh))
+            .collect();
+
+        // Create a new rewards round that consists of the failed (per address combined) payments.
+        let retry_rewards_round: RewardDistribution = failed_quote_payments
+            .into_iter()
+            .map(|(_, address, amount)| (address, amount))
+            .collect();
+
+        // Add the distribution rounds back in.
+        rewards_distribution_rounds
+            .lock()
+            .await
+            .extend(vec![retry_rewards_round]);
+    }
 
     Ok(())
 }

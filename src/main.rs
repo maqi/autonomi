@@ -28,6 +28,8 @@ async fn main() -> eyre::Result<()> {
         Wallet::new_with_random_wallet(network)
     };
 
+    // todo: set lower wallet max fee per gas limit
+
     println!("Wallet address: {}", wallet.address());
 
     let config = opt.try_to_config()?;

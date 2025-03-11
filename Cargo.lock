@@ -766,8 +766,8 @@ dependencies = [
 
 [[package]]
 name = "ant-bootstrap"
-version = "0.1.5"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "0.2.0-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "ant-logging",
  "ant-protocol",
@@ -788,8 +788,8 @@ dependencies = [
 
 [[package]]
 name = "ant-build-info"
-version = "0.1.24"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "0.1.26-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "chrono",
  "tracing",
@@ -798,8 +798,8 @@ dependencies = [
 
 [[package]]
 name = "ant-evm"
-version = "0.1.9"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "0.1.11-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "custom_debug",
  "evmlib",
@@ -820,8 +820,8 @@ dependencies = [
 
 [[package]]
 name = "ant-logging"
-version = "0.2.46"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "0.2.48-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "chrono",
  "dirs-next",
@@ -837,8 +837,8 @@ dependencies = [
 
 [[package]]
 name = "ant-networking"
-version = "0.3.5"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "0.3.7-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "aes-gcm-siv",
  "ant-bootstrap",
@@ -871,8 +871,8 @@ dependencies = [
 
 [[package]]
 name = "ant-protocol"
-version = "1.0.0"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "1.0.2-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "ant-build-info",
  "ant-evm",
@@ -1242,8 +1242,8 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "autonomi"
-version = "0.3.6"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "0.4.1-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "ant-bootstrap",
  "ant-evm",
@@ -2235,8 +2235,8 @@ dependencies = [
 
 [[package]]
 name = "evmlib"
-version = "0.1.9"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=44d5f630038b47efb9cc3d719aa7554bda001c20#44d5f630038b47efb9cc3d719aa7554bda001c20"
+version = "0.2.1-rc.5"
+source = "git+https://github.com/maidsafe/autonomi/?rev=4614d59fbd0a998364a16ab75978cfd8c7b8e50c#4614d59fbd0a998364a16ab75978cfd8c7b8e50c"
 dependencies = [
  "alloy",
  "dirs-next",

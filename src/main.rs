@@ -3,7 +3,7 @@ mod opt;
 mod service;
 mod utils;
 
-use autonomi::Wallet;
+use autonomi::{TransactionConfig, Wallet};
 use clap::Parser;
 use eyre::eyre;
 
@@ -20,7 +20,7 @@ async fn main() -> eyre::Result<()> {
     // Create a wallet for the service.
     //
     // Get the private key from ENV or generate a random new one.
-    let wallet = if let Ok(private_key_str) = std::env::var("PRIVATE_KEY") {
+    let mut wallet = if let Ok(private_key_str) = std::env::var("PRIVATE_KEY") {
         Wallet::new_from_private_key(network, &private_key_str).map_err(|_| {
             eyre!("Invalid private key format. Please provide a valid 64-character hex string.")
         })?
@@ -28,7 +28,10 @@ async fn main() -> eyre::Result<()> {
         Wallet::new_with_random_wallet(network)
     };
 
-    // todo: set lower wallet max fee per gas limit
+    // Set fee per gas limit to 0.04 GWEI.
+    wallet.set_transaction_config(TransactionConfig {
+        max_fee_per_gas: 40000000,
+    });
 
     println!("Wallet address: {}", wallet.address());
 

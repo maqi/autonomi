@@ -7,7 +7,7 @@ edition = "2021"
 autonomi = { git = "https://github.com/maidsafe/autonomi/", rev = "4614d59fbd0a998364a16ab75978cfd8c7b8e50c" }
 clap = "4.5.28"
 eyre = "0.6.12"
-tokio = { version = "1.43.0", features = ["rt", "rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "signal"] }
 xor_name = "5.0.0"
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

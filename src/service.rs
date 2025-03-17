@@ -17,11 +17,6 @@ pub type RewardDistributionRounds = Arc<Mutex<VecDeque<RewardDistribution>>>;
 
 /// Run the service.
 pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
-    let client = match config.local {
-        true => Client::init_local().await?,
-        false => Client::init().await?,
-    };
-
     let rewards_distribution_rounds: RewardDistributionRounds = Default::default();
 
     let mut reward_interval =
@@ -44,12 +39,11 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
             _ = reward_interval.tick() => {
                 tracing::info!("Starting reward distribution round.");
 
-                let client_clone = client.clone();
                 let config_clone = config.clone();
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
 
                 tokio::spawn(async move {
-                   let _ = start_reward_distribution_round(client_clone, config_clone, rewards_distribution_rounds_clone).await
+                    let _ = start_reward_distribution_round(config_clone, rewards_distribution_rounds_clone).await
                         .inspect_err(|err| tracing::error!("Error during reward distribution: {err:?}"));
                 });
             }
@@ -69,6 +63,13 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+pub async fn create_client(config: &Config) -> eyre::Result<Client> {
+    match config.local {
+        true => Ok(Client::init_local().await?),
+        false => Ok(Client::init().await?),
+    }
 }
 
 /// Send all funds to the return address.
@@ -193,11 +194,12 @@ pub async fn payout_rewards(
 
 /// Starts a reward distribution round.
 pub async fn start_reward_distribution_round(
-    client: Client,
     config: Config,
     rewards_distribution_rounds: RewardDistributionRounds,
 ) -> eyre::Result<()> {
     let start_time = std::time::Instant::now();
+
+    let client = create_client(&config).await?;
 
     let peer_reward_addresses =
         pick_random_network_peer_reward_addresses(&client, config.reward_peers_amount).await?;

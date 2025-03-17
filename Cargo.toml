@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-autonomi = { git = "https://github.com/maidsafe/autonomi/", rev = "4614d59fbd0a998364a16ab75978cfd8c7b8e50c" }
+autonomi = { git = "https://github.com/maidsafe/autonomi/", rev = "86179150bc56880c28b1f792723c3c4a581e00d8" }
 clap = "4.5.28"
 eyre = "0.6.12"
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "signal"] }

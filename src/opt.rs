@@ -36,6 +36,9 @@ pub(crate) struct Opt {
     #[clap(long, default_value_t = false)]
     /// Log to a file in `./logs/app.log`.
     pub log_file: bool,
+    #[clap(long)]
+    /// Optionally give a specific name for the log file.
+    pub log_file_name: Option<String>,
 }
 
 impl Opt {

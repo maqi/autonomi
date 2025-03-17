@@ -12,7 +12,7 @@ async fn main() -> eyre::Result<()> {
     let opt = opt::Opt::parse();
 
     // Setup logging.
-    logging::setup_logging(opt.log_file);
+    logging::setup_logging(opt.log_file, opt.log_file_name.clone());
 
     // Tries to get the network from env first `EVM_NETWORK`.
     let network = autonomi::Network::new(false).unwrap_or_default();

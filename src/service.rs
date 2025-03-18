@@ -4,7 +4,7 @@ use autonomi::client::quote::DataTypes;
 use autonomi::{Amount, Client, QuoteHash, RewardsAddress, Wallet};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio::time::{self, Duration};
 use xor_name::XorName;
 
@@ -17,6 +17,9 @@ pub type RewardDistributionRounds = Arc<Mutex<VecDeque<RewardDistribution>>>;
 
 /// Run the service.
 pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
+    let shared_client: Arc<RwLock<Client>> =
+        Arc::new(RwLock::new(create_client_with_retries(&config).await));
+
     let rewards_distribution_rounds: RewardDistributionRounds = Default::default();
 
     let mut reward_interval =
@@ -39,24 +42,35 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
             _ = reward_interval.tick() => {
                 tracing::info!("Starting reward distribution round.");
 
+                let shared_client_clone = shared_client.clone();
                 let config_clone = config.clone();
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
 
                 tokio::spawn(async move {
-                    let _ = start_reward_distribution_round(config_clone, rewards_distribution_rounds_clone).await
+                    let client = shared_client_clone.read().await.clone();
+
+                    let _ = start_reward_distribution_round(client, config_clone, rewards_distribution_rounds_clone).await
                         .inspect_err(|err| tracing::error!("Error during reward distribution: {err:?}"));
                 });
             }
             _ = payout_interval.tick() => {
                 tracing::info!("Paying out rewards..");
 
+                let shared_client_clone = shared_client.clone();
+                let config_clone = config.clone();
                 let wallet_clone = wallet.clone();
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
 
                 tokio::spawn(async move {
                    let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone).await
                         .inspect_err(|err| tracing::error!("Error paying out rewards: {err:?}"));
+
                     tracing::info!("Rewards paid out.");
+
+                    let client = create_client_with_retries(&config_clone).await;
+                    *shared_client_clone.write().await = client;
+
+                    tracing::info!("Updated client.");
                 });
             }
         }
@@ -69,6 +83,31 @@ pub async fn create_client(config: &Config) -> eyre::Result<Client> {
     match config.local {
         true => Ok(Client::init_local().await?),
         false => Ok(Client::init().await?),
+    }
+}
+
+pub async fn create_client_with_retries(config: &Config) -> Client {
+    let mut attempts = 0;
+
+    loop {
+        attempts += 1;
+
+        match create_client(config).await {
+            Ok(client) => {
+                break client;
+            }
+            Err(err) => {
+                tracing::error!("Failed to create client: {err:?}. Attempt {attempts} / 4");
+
+                // Should never happen.
+                if attempts >= 4 {
+                    panic!("Failed to create client after {attempts} attempts");
+                }
+
+                // Wait for a short duration before retrying
+                time::sleep(Duration::from_secs(5_u64.pow(attempts - 1))).await;
+            }
+        }
     }
 }
 
@@ -194,12 +233,11 @@ pub async fn payout_rewards(
 
 /// Starts a reward distribution round.
 pub async fn start_reward_distribution_round(
+    client: Client,
     config: Config,
     rewards_distribution_rounds: RewardDistributionRounds,
 ) -> eyre::Result<()> {
     let start_time = std::time::Instant::now();
-
-    let client = create_client(&config).await?;
 
     let peer_reward_addresses =
         pick_random_network_peer_reward_addresses(&client, config.reward_peers_amount).await?;

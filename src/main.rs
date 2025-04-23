@@ -1,3 +1,4 @@
+mod github;
 mod logging;
 mod opt;
 mod service;

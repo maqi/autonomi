@@ -1,3 +1,4 @@
+use crate::github::get_latest_stable_release;
 use crate::opt::Config;
 use crate::utils::{random_address, usize_to_u8_array};
 use autonomi::client::quote::DataTypes;
@@ -10,13 +11,14 @@ use tokio::time::{self, Duration};
 use xor_name::XorName;
 
 const BASE_GAS_FEE: u64 = 100_000_000_000_000;
+const UPDATE_MIN_NODE_VERSION_INTERVAL_SECS: u64 = 60 * 60; // Hourly
 
-/// Minimum node package version to be eligible for rewards.
-const MIN_VERSION: PackageVersion = PackageVersion {
+/// Start minimum node package version to be eligible for rewards.
+const START_MIN_VERSION: PackageVersion = PackageVersion {
     year: 2025,
-    month: 1,
-    cycle: 2,
-    cycle_counter: 11,
+    month: 4,
+    cycle: 1,
+    cycle_counter: 1,
 };
 
 /// Represents a single rewards distribution round.
@@ -30,10 +32,14 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
 
     let rewards_distribution_rounds: RewardDistributionRounds = Default::default();
 
+    let min_node_version = Arc::new(RwLock::new(START_MIN_VERSION));
+
     let mut reward_interval =
         time::interval(Duration::from_secs(config.reward_interval_secs as u64));
     let mut payout_interval =
         time::interval(Duration::from_secs(config.payout_interval_secs as u64));
+    let mut update_min_node_version_interval =
+        time::interval(Duration::from_secs(UPDATE_MIN_NODE_VERSION_INTERVAL_SECS));
 
     // Skip the immediate execution.
     payout_interval.tick().await;
@@ -53,11 +59,12 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
                 let shared_client_clone = shared_client.clone();
                 let config_clone = config.clone();
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
+                let min_node_version_clone = *min_node_version.read().await;
 
                 tokio::spawn(async move {
                     let client = shared_client_clone.read().await.clone();
 
-                    let _ = start_reward_distribution_round(client, config_clone, rewards_distribution_rounds_clone).await
+                    let _ = start_reward_distribution_round(client, config_clone, rewards_distribution_rounds_clone, &min_node_version_clone).await
                         .inspect_err(|err| tracing::error!("Error during reward distribution: {err:?}"));
                 });
             }
@@ -79,6 +86,13 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
                     *shared_client_clone.write().await = client;
 
                     tracing::info!("Updated client.");
+                });
+            }
+            _ = update_min_node_version_interval.tick() => {
+                let min_node_version_clone = min_node_version.clone();
+
+                tokio::spawn(async move {
+                    update_min_node_version(min_node_version_clone).await;
                 });
             }
         }
@@ -244,11 +258,16 @@ pub async fn start_reward_distribution_round(
     client: Client,
     config: Config,
     rewards_distribution_rounds: RewardDistributionRounds,
+    min_node_version: &PackageVersion,
 ) -> eyre::Result<()> {
     let start_time = std::time::Instant::now();
 
-    let peer_reward_addresses =
-        pick_random_network_peer_reward_addresses(&client, config.reward_peers_amount).await?;
+    let peer_reward_addresses = pick_random_network_peer_reward_addresses(
+        &client,
+        config.reward_peers_amount,
+        min_node_version,
+    )
+    .await?;
 
     let mut reward_distribution = RewardDistribution::default();
 
@@ -274,6 +293,7 @@ pub async fn start_reward_distribution_round(
 pub async fn pick_random_network_peer_reward_addresses(
     client: &Client,
     amount: usize,
+    min_node_version: &PackageVersion,
 ) -> eyre::Result<Vec<RewardsAddress>> {
     let random_network_addresses: Vec<XorName> = (0..amount).map(|_| random_address()).collect();
 
@@ -308,7 +328,7 @@ pub async fn pick_random_network_peer_reward_addresses(
                 .iter()
                 .filter_map(|(peer, addresses, version)| {
                     if let Ok(version) = version {
-                        if version.is_minimum(&MIN_VERSION) {
+                        if version.is_minimum(min_node_version) {
                             return Some((*peer, addresses.clone()));
                         }
                     }
@@ -371,4 +391,20 @@ pub async fn pick_random_network_peer_reward_addresses(
     .collect();
 
     Ok(reward_addresses)
+}
+
+/// Update the minimum required node version to be eligible for rewards.
+pub async fn update_min_node_version(min_node_version: Arc<RwLock<PackageVersion>>) {
+    if let Ok(Some(latest_release)) = get_latest_stable_release().await {
+        let current_min_node_version = *min_node_version.read().await;
+        tracing::info!("Latest stable release: {}", latest_release);
+        if latest_release.is_minimum(&current_min_node_version)
+            && !latest_release.is_exact(&current_min_node_version)
+        {
+            tracing::info!("Updating minimum node version to: {}", latest_release);
+            *min_node_version.write().await = latest_release;
+        }
+    } else {
+        tracing::error!("Failed to fetch latest stable release.");
+    }
 }

@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-autonomi = { git = "https://github.com/mickvandijke/autonomi/", rev = "3acae0da3bef367d52daa671ed145b246a1bcf3d" }
+autonomi = { git = "https://github.com/mickvandijke/autonomi/", rev = "d7a93226ecd541faf72a6d9af6bb49f94dd4be38" }
 clap = "4.5.28"
 eyre = "0.6.12"
 futures = "0.3.31"
-tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "signal"] }
+tokio = { version = "1.44.2", features = ["rt-multi-thread", "macros", "signal"] }
 xor_name = "5.0.0"
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

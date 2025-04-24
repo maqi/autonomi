@@ -766,8 +766,8 @@ dependencies = [
 
 [[package]]
 name = "ant-bootstrap"
-version = "0.2.0"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "0.2.1"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "ant-logging",
  "ant-protocol",
@@ -788,8 +788,8 @@ dependencies = [
 
 [[package]]
 name = "ant-build-info"
-version = "0.1.26"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "0.1.27"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "chrono",
  "tracing",
@@ -798,13 +798,12 @@ dependencies = [
 
 [[package]]
 name = "ant-evm"
-version = "0.1.11"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "0.1.13"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "custom_debug",
  "evmlib",
  "hex",
- "lazy_static",
  "libp2p",
  "rand",
  "ring 0.17.14",
@@ -820,8 +819,8 @@ dependencies = [
 
 [[package]]
 name = "ant-logging"
-version = "0.2.48"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "0.2.49"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "chrono",
  "dirs-next",
@@ -837,8 +836,8 @@ dependencies = [
 
 [[package]]
 name = "ant-networking"
-version = "0.3.8"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "0.3.10"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "aes-gcm-siv",
  "ant-bootstrap",
@@ -871,8 +870,8 @@ dependencies = [
 
 [[package]]
 name = "ant-protocol"
-version = "1.0.2"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "1.0.4"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "ant-build-info",
  "ant-evm",
@@ -883,7 +882,6 @@ dependencies = [
  "custom_debug",
  "dirs-next",
  "hex",
- "lazy_static",
  "libp2p",
  "prometheus-client",
  "rand",
@@ -1251,8 +1249,8 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "autonomi"
-version = "0.4.2"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "0.4.4"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "ant-bootstrap",
  "ant-evm",
@@ -2254,8 +2252,8 @@ dependencies = [
 
 [[package]]
 name = "evmlib"
-version = "0.2.1"
-source = "git+https://github.com/mickvandijke/autonomi/?rev=3acae0da3bef367d52daa671ed145b246a1bcf3d#3acae0da3bef367d52daa671ed145b246a1bcf3d"
+version = "0.3.0"
+source = "git+https://github.com/mickvandijke/autonomi/?rev=d7a93226ecd541faf72a6d9af6bb49f94dd4be38#d7a93226ecd541faf72a6d9af6bb49f94dd4be38"
 dependencies = [
  "alloy",
  "alloy-primitives",
@@ -5913,9 +5911,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.43.0"
+version = "1.44.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d61fa4ffa3de412bfea335c6ecff681de2b609ba3c77ef3e00e521813a9ed9e"
+checksum = "e6b88822cbe49de4185e3a4cbf8321dd487cf5fe0c5c65695fef6346371e9c48"
 dependencies = [
  "backtrace",
  "bytes",

@@ -12,7 +12,7 @@ const START_MIN_VERSION: PackageVersion = PackageVersion {
 const START_ANTNODE_VERSION: Version = Version {
     major: 0,
     minor: 3,
-    patch: 9,
+    patch: 10,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

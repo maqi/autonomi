@@ -3,6 +3,8 @@ mod logging;
 mod opt;
 mod service;
 mod utils;
+mod version;
+mod version_pack;
 
 use autonomi::{TransactionConfig, Wallet};
 use clap::Parser;

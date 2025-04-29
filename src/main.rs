@@ -1,10 +1,8 @@
-mod github;
 mod logging;
 mod opt;
 mod service;
 mod utils;
-mod version;
-mod version_pack;
+mod version_file;
 
 use autonomi::{TransactionConfig, Wallet};
 use clap::Parser;

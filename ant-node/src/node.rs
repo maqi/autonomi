@@ -883,16 +883,17 @@ impl Node {
     /// This will challenge all closest peers at once.
     async fn storage_challenge(network: Network) {
         let start = Instant::now();
-        let closest_peers: Vec<(PeerId, Addresses)> =
-            if let Ok(closest_peers) = network.get_closest_k_value_local_peers().await {
-                closest_peers
-                    .into_iter()
-                    .take(CLOSE_GROUP_SIZE)
-                    .collect_vec()
-            } else {
-                error!("Cannot get local neighbours");
-                return;
-            };
+        let closest_peers: Vec<(PeerId, Addresses)> = if let Ok(closest_peers) =
+            network.get_k_closest_local_peers_to_the_target(None).await
+        {
+            closest_peers
+                .into_iter()
+                .take(CLOSE_GROUP_SIZE)
+                .collect_vec()
+        } else {
+            error!("Cannot get local neighbours");
+            return;
+        };
         if closest_peers.len() < CLOSE_GROUP_SIZE {
             debug!(
                 "Not enough neighbours ({}/{}) to carry out storage challenge.",

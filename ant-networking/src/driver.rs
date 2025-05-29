@@ -335,7 +335,7 @@ impl SwarmDriver {
 
                     // Use distance to close peer to avoid the situation that
                     // the estimated density_distance is too narrow.
-                    let closest_k_peers = self.get_closest_k_value_local_peers();
+                    let closest_k_peers = self.get_closest_k_local_peers_to_self();
                     if closest_k_peers.len() <= CLOSE_GROUP_SIZE + 2 {
                         continue;
                     }
@@ -345,23 +345,6 @@ impl SwarmDriver {
                     let close_peers_distance = self_addr.distance(&NetworkAddress::from(closest_k_peers[CLOSE_GROUP_SIZE + 1].0));
 
                     let distance = std::cmp::max(Distance(density_distance), close_peers_distance);
-
-                    // The sampling approach has severe impact to the node side performance
-                    // Hence suggested to be only used by client side.
-                    // let distance = if let Some(distance) = self.network_density_samples.get_median() {
-                    //     distance
-                    // } else {
-                    //     // In case sampling not triggered or yet,
-                    //     // fall back to use the distance to CLOSE_GROUP_SIZEth closest
-                    //     let closest_k_peers = self.get_closest_k_value_local_peers();
-                    //     if closest_k_peers.len() <= CLOSE_GROUP_SIZE + 1 {
-                    //         continue;
-                    //     }
-                    //     // Results are sorted, hence can calculate distance directly
-                    //     // Note: self is included
-                    //     let self_addr = NetworkAddress::from(self.self_peer_id);
-                    //     self_addr.distance(&NetworkAddress::from(closest_k_peers[CLOSE_GROUP_SIZE]))
-                    // };
 
                     info!("Set responsible range to {distance:?}({:?})", distance.ilog2());
 
@@ -470,38 +453,44 @@ impl SwarmDriver {
         });
     }
 
-    /// Get closest K_VALUE peers from our local RoutingTable. Contains self.
-    /// Is sorted for closeness to self.
-    pub(crate) fn get_closest_k_value_local_peers(&mut self) -> Vec<(PeerId, Addresses)> {
-        // Limit ourselves to K_VALUE (20) peers.
-        let peers: Vec<_> = self.get_closest_local_peers_to_target(
-            &NetworkAddress::from(self.self_peer_id),
-            K_VALUE.get() - 1,
-        );
-
-        // Start with our own PeerID and chain the closest.
-        std::iter::once((self.self_peer_id, Default::default()))
-            .chain(peers)
-            .collect()
+    /// Get K closest peers to self, from our local RoutingTable.
+    /// Always includes self in.
+    pub(crate) fn get_closest_k_local_peers_to_self(&mut self) -> Vec<(PeerId, Addresses)> {
+        self.get_closest_k_local_peers_to_target(&NetworkAddress::from(self.self_peer_id), true)
     }
 
-    /// Get closest X peers to the target. Not containing self.
-    /// Is sorted for closeness to the target.
-    pub(crate) fn get_closest_local_peers_to_target(
+    /// Get K closest peers to the target, from our local RoutingTable.
+    /// Sorted for closeness to the target
+    /// If requested, self will be added as the first entry.
+    pub(crate) fn get_closest_k_local_peers_to_target(
         &mut self,
         target: &NetworkAddress,
-        num_of_peers: usize,
+        include_self: bool,
     ) -> Vec<(PeerId, Addresses)> {
-        let peer_ids = self
+        let num_peers = if include_self {
+            K_VALUE.get() - 1
+        } else {
+            K_VALUE.get()
+        };
+
+        let peer_ids: Vec<_> = self
             .swarm
             .behaviour_mut()
             .kademlia
             .get_closest_local_peers(&target.as_kbucket_key())
             // Map KBucketKey<PeerId> to PeerId.
             .map(|key| key.into_preimage())
-            .take(num_of_peers)
+            .take(num_peers)
             .collect();
-        self.collect_peers_info(peer_ids)
+
+        if include_self {
+            // Start with our own PeerID and chain the closest.
+            std::iter::once((self.self_peer_id, Default::default()))
+                .chain(self.collect_peers_info(peer_ids))
+                .collect()
+        } else {
+            self.collect_peers_info(peer_ids)
+        }
     }
 
     /// Collect peers' address info

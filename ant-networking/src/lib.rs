@@ -216,29 +216,23 @@ impl Network {
             .map_err(|_e| NetworkError::InternalMsgChannelDropped)
     }
 
-    /// Returns K closest peers (to self) from our local Routing Table
-    /// Also contains our own PeerId.
-    pub async fn get_closest_k_value_local_peers(&self) -> Result<Vec<(PeerId, Addresses)>> {
-        let (sender, receiver) = oneshot::channel();
-        self.send_local_swarm_cmd(LocalSwarmCmd::GetClosestKLocalPeers { sender });
-
-        receiver
-            .await
-            .map_err(|_e| NetworkError::InternalMsgChannelDropped)
-    }
-
-    /// Returns X close peers to the target.
-    /// Note: self is not included
-    pub async fn get_close_peers_to_the_target(
+    /// Returns K closest local peers to the target.
+    /// Target defaults to self, if not provided.
+    /// Self is always included as the first entry.
+    pub async fn get_k_closest_local_peers_to_the_target(
         &self,
-        key: NetworkAddress,
-        num_of_peers: usize,
+        key: Option<NetworkAddress>,
     ) -> Result<Vec<(PeerId, Addresses)>> {
+        let target = if let Some(target) = key {
+            target
+        } else {
+            NetworkAddress::from(self.peer_id())
+        };
+
         let (sender, receiver) = oneshot::channel();
-        self.send_local_swarm_cmd(LocalSwarmCmd::GetCloseLocalPeersToTarget {
-            key,
-            num_of_peers,
+        self.send_local_swarm_cmd(LocalSwarmCmd::GetKCloseLocalPeersToTarget {
             sender,
+            key: target,
         });
 
         receiver

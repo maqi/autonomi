@@ -17,7 +17,6 @@ use crate::{
     error::Result,
     event::{NetworkEvent, NodeEvent},
     external_address::ExternalAddressManager,
-    fifo_register::FifoRegister,
     log_markers::Marker,
     network_discovery::{NetworkDiscovery, NETWORK_DISCOVER_INTERVAL},
     relay_manager::RelayManager,
@@ -164,8 +163,6 @@ pub struct SwarmDriver {
     pub(crate) last_replication: Option<Instant>,
     /// when was the last outdated connection prunning undertaken.
     pub(crate) last_connection_pruning_time: Instant,
-    /// FIFO cache for the network density samples
-    pub(crate) network_density_samples: FifoRegister,
     /// record versions of those peers that in the non-full-kbuckets.
     pub(crate) peers_version: HashMap<PeerId, String>,
 }
@@ -345,23 +342,6 @@ impl SwarmDriver {
                     let close_peers_distance = self_addr.distance(&NetworkAddress::from(closest_k_peers[CLOSE_GROUP_SIZE + 1].0));
 
                     let distance = std::cmp::max(Distance(density_distance), close_peers_distance);
-
-                    // The sampling approach has severe impact to the node side performance
-                    // Hence suggested to be only used by client side.
-                    // let distance = if let Some(distance) = self.network_density_samples.get_median() {
-                    //     distance
-                    // } else {
-                    //     // In case sampling not triggered or yet,
-                    //     // fall back to use the distance to CLOSE_GROUP_SIZEth closest
-                    //     let closest_k_peers = self.get_closest_k_value_local_peers();
-                    //     if closest_k_peers.len() <= CLOSE_GROUP_SIZE + 1 {
-                    //         continue;
-                    //     }
-                    //     // Results are sorted, hence can calculate distance directly
-                    //     // Note: self is included
-                    //     let self_addr = NetworkAddress::from(self.self_peer_id);
-                    //     self_addr.distance(&NetworkAddress::from(closest_k_peers[CLOSE_GROUP_SIZE]))
-                    // };
 
                     info!("Set responsible range to {distance:?}({:?})", distance.ilog2());
 

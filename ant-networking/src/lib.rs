@@ -20,7 +20,6 @@ mod driver;
 mod error;
 mod event;
 mod external_address;
-mod fifo_register;
 mod graph;
 mod log_markers;
 #[cfg(feature = "open-metrics")]

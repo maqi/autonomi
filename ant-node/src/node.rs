@@ -19,8 +19,7 @@ use ant_networking::Addresses;
 #[cfg(feature = "open-metrics")]
 use ant_networking::MetricsRegistries;
 use ant_networking::{
-    time::sleep, Instant, Network, NetworkBuilder, NetworkError, NetworkEvent, NodeIssue,
-    SwarmDriver,
+    Instant, Network, NetworkBuilder, NetworkError, NetworkEvent, NodeIssue, SwarmDriver,
 };
 use ant_protocol::{
     error::Error as ProtocolError,

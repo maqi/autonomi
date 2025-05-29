@@ -13,7 +13,6 @@ use crate::{
     error::{NetworkError, Result},
     event::NetworkEvent,
     external_address::ExternalAddressManager,
-    fifo_register::FifoRegister,
     network_discovery::NetworkDiscovery,
     record_store::{NodeRecordStore, NodeRecordStoreConfig},
     relay_manager::RelayManager,
@@ -518,7 +517,6 @@ impl NetworkBuilder {
             replication_targets: Default::default(),
             last_replication: None,
             last_connection_pruning_time: Instant::now(),
-            network_density_samples: FifoRegister::new(100),
             peers_version: Default::default(),
         };
 

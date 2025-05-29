@@ -470,10 +470,6 @@ impl Network {
         self.send_local_swarm_cmd(LocalSwarmCmd::TriggerIrrelevantRecordCleanup)
     }
 
-    pub fn add_network_density_sample(&self, distance: KBucketDistance) {
-        self.send_local_swarm_cmd(LocalSwarmCmd::AddNetworkDensitySample { distance })
-    }
-
     pub fn notify_peer_scores(&self, peer_scores: Vec<(PeerId, bool)>) {
         self.send_local_swarm_cmd(LocalSwarmCmd::NotifyPeerScores { peer_scores })
     }

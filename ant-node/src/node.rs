@@ -76,10 +76,6 @@ const MIN_ACCEPTABLE_HEALTHY_SCORE: usize = 3000;
 /// in ms, expecting average StorageChallenge complete time to be around 250ms.
 const TIME_STEP: usize = 20;
 
-/// Interval to carryout network density sampling
-/// This is the max time it should take. Minimum interval at any node will be half this
-const NETWORK_DENSITY_SAMPLING_INTERVAL_MAX_S: u64 = 200;
-
 /// Helper to build and run a Node
 pub struct NodeBuilder {
     addr: SocketAddr,
@@ -315,22 +311,6 @@ impl Node {
                 tokio::time::interval(storage_challenge_interval_time);
             let _ = storage_challenge_interval.tick().await; // first tick completes immediately
 
-            // use a random network density sampling ticker to ensure
-            // neighbours do not carryout sampling at the same time
-            let network_density_sampling_interval: u64 = rng.gen_range(
-                NETWORK_DENSITY_SAMPLING_INTERVAL_MAX_S / 2
-                    ..NETWORK_DENSITY_SAMPLING_INTERVAL_MAX_S,
-            );
-            let network_density_sampling_interval_time =
-                Duration::from_secs(network_density_sampling_interval);
-            debug!(
-                "Network density sampling interval set to {network_density_sampling_interval:?}"
-            );
-
-            let mut network_density_sampling_interval =
-                tokio::time::interval(network_density_sampling_interval_time);
-            let _ = network_density_sampling_interval.tick().await; // first tick completes immediately
-
             loop {
                 let peers_connected = &peers_connected;
 
@@ -393,20 +373,6 @@ impl Node {
                             Self::storage_challenge(network).await;
                             trace!("Periodic storage challenge took {:?}", start.elapsed());
                         });
-                    }
-                    _ = network_density_sampling_interval.tick() => {
-                        // The following shall be used by client only to support RBS.
-                        // Due to the concern of the extra resource usage that incurred.
-                        continue;
-
-                        // let start = Instant::now();
-                        // debug!("Periodic network density sampling triggered");
-                        // let network = self.network().clone();
-
-                        // let _handle = spawn(async move {
-                        //     Self::network_density_sampling(network).await;
-                        //     trace!("Periodic network density sampling took {:?}", start.elapsed());
-                        // });
                     }
                 }
             }
@@ -1031,25 +997,6 @@ impl Node {
             }
         };
         network.notify_node_version(peer, version);
-    }
-
-    #[allow(dead_code)]
-    async fn network_density_sampling(network: Network) {
-        for _ in 0..10 {
-            let target = NetworkAddress::from(PeerId::random());
-            // Result is sorted and only return CLOSE_GROUP_SIZE entries
-            let peers = network.get_n_closest_peers(&target, CLOSE_GROUP_SIZE).await;
-            if let Ok(peers) = peers {
-                if peers.len() >= CLOSE_GROUP_SIZE {
-                    // Calculate the distance to the farthest.
-                    let distance =
-                        target.distance(&NetworkAddress::from(peers[CLOSE_GROUP_SIZE - 1].0));
-                    network.add_network_density_sample(distance);
-                }
-            }
-            // Sleep a short while to avoid causing a spike on resource usage.
-            sleep(std::time::Duration::from_secs(10)).await;
-        }
     }
 }
 

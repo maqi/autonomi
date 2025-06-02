@@ -12,7 +12,6 @@ use crate::{
     bootstrap::{InitialBootstrap, InitialBootstrapTrigger, INITIAL_BOOTSTRAP_CHECK_INTERVAL},
     circular_vec::CircularVec,
     cmd::{LocalSwarmCmd, NetworkSwarmCmd},
-    config::GetRecordCfg,
     driver::kad::U256,
     error::Result,
     event::{NetworkEvent, NodeEvent},
@@ -22,7 +21,7 @@ use crate::{
     relay_manager::RelayManager,
     replication_fetcher::ReplicationFetcher,
     time::{interval, spawn, Instant, Interval},
-    Addresses, GetRecordError, NodeIssue, NodeRecordStore, CLOSE_GROUP_SIZE,
+    Addresses, NodeIssue, NodeRecordStore, CLOSE_GROUP_SIZE,
 };
 use ant_bootstrap::BootstrapCacheStore;
 use ant_evm::PaymentQuote;
@@ -33,7 +32,7 @@ use ant_protocol::{
 };
 use futures::StreamExt;
 use libp2p::{
-    kad::{self, KBucketDistance as Distance, QueryId, Record, RecordKey, K_VALUE},
+    kad::{self, KBucketDistance as Distance, QueryId, K_VALUE},
     request_response::OutboundRequestId,
     swarm::{ConnectionId, Swarm},
     Multiaddr, PeerId,
@@ -50,7 +49,6 @@ use std::{
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::Duration;
 use tracing::warn;
-use xor_name::XorName;
 
 /// 10 is the max number of issues per node we track to avoid mem leaks
 /// The boolean flag to indicate whether the node is considered as bad or not
@@ -72,18 +70,6 @@ pub(crate) enum PendingGetClosestType {
     FunctionCall(oneshot::Sender<Vec<(PeerId, Addresses)>>),
 }
 type PendingGetClosest = HashMap<QueryId, (PendingGetClosestType, Vec<(PeerId, Addresses)>)>;
-
-/// Using XorName to differentiate different record content under the same key.
-type GetRecordResultMap = HashMap<XorName, (Record, HashSet<PeerId>)>;
-pub(crate) type PendingGetRecord = HashMap<
-    QueryId,
-    (
-        RecordKey, // record we're fetching, to dedupe repeat requests
-        Vec<oneshot::Sender<std::result::Result<Record, GetRecordError>>>, // vec of senders waiting for this record
-        GetRecordResultMap,
-        GetRecordCfg,
-    ),
->;
 
 impl From<std::convert::Infallible> for NodeEvent {
     fn from(_: std::convert::Infallible) -> Self {
@@ -142,7 +128,6 @@ pub struct SwarmDriver {
         OutboundRequestId,
         Option<oneshot::Sender<Result<(Response, Option<ConnectionInfo>)>>>,
     >,
-    pub(crate) pending_get_record: PendingGetRecord,
     /// A list of the most recent peers we have dialed ourselves. Old dialed peers are evicted once the vec fills up.
     pub(crate) dialed_peers: CircularVec<PeerId>,
     // Peers that having live connection to. Any peer got contacted during kad network query

@@ -20,7 +20,6 @@ mod driver;
 mod error;
 mod event;
 mod external_address;
-mod graph;
 mod log_markers;
 #[cfg(feature = "open-metrics")]
 mod metrics;
@@ -37,11 +36,10 @@ use cmd::LocalSwarmCmd;
 // re-export arch dependent deps for use in the crate, or above
 pub use self::{
     cmd::{NodeIssue, SwarmLocalState},
-    config::{GetRecordCfg, PutRecordCfg, ResponseQuorum, RetryStrategy, VerificationKind},
+    config::ResponseQuorum,
     driver::SwarmDriver,
-    error::{GetRecordError, NetworkError},
+    error::NetworkError,
     event::{MsgResponder, NetworkEvent},
-    graph::get_graph_entry_from_record,
     network_builder::{NetworkBuilder, MAX_PACKET_SIZE},
     record_store::NodeRecordStore,
 };

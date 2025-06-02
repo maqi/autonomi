@@ -7,83 +7,19 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use ant_protocol::storage::GraphEntryAddress;
-use ant_protocol::{messages::Response, storage::RecordKind, NetworkAddress, PrettyPrintRecordKey};
+use ant_protocol::{messages::Response, storage::RecordKind, NetworkAddress};
 use libp2p::swarm::ListenError;
 use libp2p::{
-    kad::{self, QueryId, Record},
+    kad::{self, QueryId},
     request_response::{OutboundFailure, OutboundRequestId},
     swarm::DialError,
-    PeerId, TransportError,
+    TransportError,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    io,
-    path::PathBuf,
-};
+use std::{collections::HashMap, fmt::Debug, io, path::PathBuf};
 use thiserror::Error;
 use tokio::sync::oneshot;
-use xor_name::XorName;
 
 pub(super) type Result<T, E = NetworkError> = std::result::Result<T, E>;
-
-/// GetRecord Query errors
-#[derive(Error, Clone)]
-pub enum GetRecordError {
-    #[error("Get Record completed with non enough copies")]
-    NotEnoughCopies {
-        record: Record,
-        expected: usize,
-        got: usize,
-    },
-    #[error("Network query timed out")]
-    QueryTimeout,
-    #[error("Record retrieved from the network does not match the provided target record.")]
-    RecordDoesNotMatch(Record),
-    #[error("The record kind for the split records did not match")]
-    RecordKindMismatch,
-    #[error("Record not found in the network")]
-    RecordNotFound,
-    // Avoid logging the whole `Record` content by accident.
-    /// The split record error will be handled at the network layer.
-    /// For GraphEntry, it accumulates them
-    #[error("Split Record has {} different copies", result_map.len())]
-    SplitRecord {
-        result_map: HashMap<XorName, (Record, HashSet<PeerId>)>,
-    },
-}
-
-impl Debug for GetRecordError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotEnoughCopies {
-                record,
-                expected,
-                got,
-            } => {
-                let pretty_key = PrettyPrintRecordKey::from(&record.key);
-                f.debug_struct("NotEnoughCopies")
-                    .field("record_key", &pretty_key)
-                    .field("expected", &expected)
-                    .field("got", &got)
-                    .finish()
-            }
-            Self::QueryTimeout => write!(f, "QueryTimeout"),
-            Self::RecordDoesNotMatch(record) => {
-                let pretty_key = PrettyPrintRecordKey::from(&record.key);
-                f.debug_tuple("RecordDoesNotMatch")
-                    .field(&pretty_key)
-                    .finish()
-            }
-            Self::RecordKindMismatch => write!(f, "RecordKindMismatch"),
-            Self::RecordNotFound => write!(f, "RecordNotFound"),
-            Self::SplitRecord { result_map } => f
-                .debug_struct("SplitRecord")
-                .field("result_map_count", &result_map.len())
-                .finish(),
-        }
-    }
-}
 
 /// Network Errors
 #[derive(Debug, Error)]
@@ -110,9 +46,6 @@ pub enum NetworkError {
     SigningFailed(#[from] libp2p::identity::SigningError),
 
     // ---------- Record Errors
-    // GetRecord query errors
-    #[error("GetRecord Query Error {0:?}")]
-    GetRecordError(#[from] GetRecordError),
     #[error("Record not stored by nodes, it could be invalid, else you should retry: {0:?}")]
     RecordNotStoredByNodes(NetworkAddress),
 
@@ -257,10 +190,10 @@ pub fn transport_err_to_str(err: &TransportError<std::io::Error>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use ant_protocol::{storage::ChunkAddress, NetworkAddress, PrettyPrintKBucketKey};
+    use ant_protocol::{
+        storage::ChunkAddress, NetworkAddress, PrettyPrintKBucketKey, PrettyPrintRecordKey,
+    };
     use xor_name::XorName;
-
-    use super::*;
 
     #[test]
     fn test_client_sees_same_hex_in_errors_for_xorname_and_record_keys() {

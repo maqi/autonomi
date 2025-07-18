@@ -2,7 +2,9 @@ use crate::opt::Config;
 use crate::utils::{random_address, usize_to_u8_array};
 use crate::version_file::fetch_min_package_version;
 use autonomi::client::quote::DataTypes;
-use autonomi::{Amount, Client, PackageVersion, QuoteHash, RewardsAddress, Wallet};
+use autonomi::networking::version::PackageVersion;
+use autonomi::networking::PeerInfo;
+use autonomi::{Amount, Client, QuoteHash, RewardsAddress, Wallet};
 use futures::future::join_all;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -12,6 +14,7 @@ use xor_name::XorName;
 
 const BASE_GAS_FEE: u64 = 100_000_000_000_000;
 const UPDATE_MIN_VERSION_INTERVAL_SECS: u64 = 60 * 60; // Hourly
+const MAX_CHUNK_SIZE: usize = 4_194_304;
 
 /// Represents a single rewards distribution round.
 pub type RewardDistribution = HashMap<RewardsAddress, Amount>;
@@ -26,7 +29,7 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
 
     let min_package_version = Arc::new(RwLock::new(PackageVersion {
         year: 2025,
-        month: 4,
+        month: 7,
         cycle: 1,
         cycle_counter: 1,
     }));
@@ -295,48 +298,57 @@ pub async fn pick_random_network_peer_reward_addresses(
     let random_network_addresses: Vec<XorName> = (0..amount).map(|_| random_address()).collect();
 
     // Get all closest nodes.
-    let results =
-        join_all(random_network_addresses.into_iter().map(|rna| async move {
-            client.get_closest_to_address(rna).await.unwrap_or_default()
-        }))
-        .await;
-
-    // Get the peer version of every node.
-    let results_with_peer_version = join_all(results.into_iter().map(|closest_nodes| async move {
-        join_all(
-            closest_nodes
-                .into_iter()
-                .map(|(peer, addresses)| async move {
-                    let version = client.get_node_version(peer, addresses.clone()).await;
-                    (peer, addresses, version)
-                }),
-        )
-        .await
+    let results = join_all(random_network_addresses.into_iter().map(|rna| async move {
+        client
+            .get_raw_quotes(DataTypes::Chunk, std::iter::once((rna, MAX_CHUNK_SIZE)))
+            .await
     }))
     .await;
 
-    let pre_filtered_amount = results_with_peer_version.iter().flatten().count();
-
-    // Filter out ineligible nodes based on their version.
-    let mut eligible_nodes: Vec<Vec<_>> = results_with_peer_version
+    let peers_with_quotes: Vec<_> = results
         .into_iter()
-        .map(|nodes_with_versions| {
-            nodes_with_versions
-                .iter()
-                .filter_map(|(peer, addresses, version)| {
-                    if let Ok(version) = version {
-                        if version.is_minimum(min_version_pack) {
-                            return Some((*peer, addresses.clone()));
-                        }
-                    }
-
-                    None
-                })
-                .collect()
+        .flatten()
+        .filter_map(|res| res.ok())
+        .flat_map(|(_, quotes)| {
+            quotes
+                .into_iter()
+                .map(|(peer_id, peer_addrs, quote)| (peer_id, peer_addrs, quote.rewards_address))
         })
         .collect();
 
-    let post_filtered_amount = eligible_nodes.iter().flatten().count();
+    let pre_filtered_amount = peers_with_quotes.len();
+
+    // Filter out ineligible nodes based on their version (parallelized).
+    let version_checks = join_all(peers_with_quotes.into_iter().map(
+        |(peer_id, peer_addrs, rewards_address)| {
+            let client = client.clone();
+            let min_version_pack = *min_version_pack;
+            async move {
+                // Timeout after 5 seconds.
+                let version = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    client.get_node_version(PeerInfo {
+                        peer_id,
+                        addrs: peer_addrs.0,
+                    }),
+                )
+                .await;
+
+                if let Ok(Ok(version)) = version {
+                    if version.is_minimum(&min_version_pack) {
+                        return Some((peer_id, rewards_address));
+                    }
+                }
+
+                None
+            }
+        },
+    ))
+    .await;
+
+    let eligible_nodes: Vec<_> = version_checks.into_iter().flatten().collect();
+
+    let post_filtered_amount = eligible_nodes.len();
 
     tracing::info!(
         "Eligible nodes amount: {}. Filtered out on version: {}.",
@@ -344,48 +356,29 @@ pub async fn pick_random_network_peer_reward_addresses(
         pre_filtered_amount - post_filtered_amount
     );
 
-    let mut picked_nodes = vec![];
+    // Early exit if we have enough nodes
+    if eligible_nodes.len() >= amount {
+        use xor_name::rand::{seq::SliceRandom, thread_rng};
+        let mut rng = thread_rng();
+        let mut eligible_nodes = eligible_nodes;
+        eligible_nodes.shuffle(&mut rng);
 
-    // Pick 100 nodes.
-    while picked_nodes.len() < amount {
-        let mut popped = false;
+        let reward_addresses: Vec<RewardsAddress> = eligible_nodes
+            .into_iter()
+            .take(amount)
+            .map(|(_, rewards_address)| rewards_address)
+            .collect();
 
-        for closest_nodes in &mut eligible_nodes {
-            if let Some((peer, addresses)) = closest_nodes.pop() {
-                picked_nodes.push((peer, addresses));
-                popped = true;
-            }
-        }
-
-        // No more nodes left.
-        if !popped {
-            tracing::error!("Could not get the requested amount of random nodes. Will continue with the set that we got of length: {}.", picked_nodes.len());
-            break;
-        }
+        return Ok(reward_addresses);
     }
 
-    let random_address = random_address();
+    // If we don't have enough nodes, use all available
+    tracing::error!("Could not get the requested amount of random nodes. Will continue with the set that we got of length: {}.", eligible_nodes.len());
 
-    // Fetch the reward addresses for the picked nodes.
-    // There is no query to get the rewards address yet, so as a workaround we fetch a quote.
-    let reward_addresses = join_all(picked_nodes.into_iter().map(|(peer, addresses)| {
-        let client = client.clone();
-        async move {
-            let result = client
-                .get_raw_quote_from_node(random_address, DataTypes::Chunk, peer, addresses)
-                .await;
-
-            if let Ok(Some((_peer, quote))) = result {
-                return Some(quote.rewards_address);
-            }
-
-            None
-        }
-    }))
-    .await
-    .into_iter()
-    .flatten()
-    .collect();
+    let reward_addresses: Vec<RewardsAddress> = eligible_nodes
+        .into_iter()
+        .map(|(_, rewards_address)| rewards_address)
+        .collect();
 
     Ok(reward_addresses)
 }

@@ -1,4 +1,4 @@
-use autonomi::PackageVersion;
+use autonomi::networking::version::PackageVersion;
 use eyre::Result;
 use serde::Deserialize;
 

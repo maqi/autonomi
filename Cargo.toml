@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-autonomi = { git = "https://github.com/mickvandijke/autonomi/", rev = "d7a93226ecd541faf72a6d9af6bb49f94dd4be38" }
+autonomi = { git = "https://github.com/mickvandijke/autonomi", branch = "emission-service-cln" }
 clap = "4.5.28"
 eyre = "0.6.12"
 futures = "0.3.31"

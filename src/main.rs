@@ -31,7 +31,7 @@ async fn main() -> eyre::Result<()> {
 
     // Set fee per gas limit to 0.04 GWEI.
     wallet.set_transaction_config(TransactionConfig {
-        max_fee_per_gas: 40000000,
+        max_fee_per_gas: autonomi::MaxFeePerGas::LimitedAuto(40000000),
     });
 
     println!("Wallet address: {}", wallet.address());

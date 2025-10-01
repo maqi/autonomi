@@ -20,6 +20,14 @@ const MAX_CHUNK_SIZE: usize = 4_194_304;
 pub type RewardDistribution = HashMap<RewardsAddress, Amount>;
 pub type RewardDistributionRounds = Arc<Mutex<VecDeque<RewardDistribution>>>;
 
+/// Distribution statistics for a payout round.
+#[derive(Debug, Clone)]
+pub struct DistributionStatistics {
+    pub total_amount: Amount,
+    pub total_recipients: usize,
+    pub distribution_percentages: HashMap<RewardsAddress, f64>,
+}
+
 /// Run the service.
 pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
     let shared_client: Arc<RwLock<Client>> =
@@ -168,6 +176,33 @@ pub async fn send_all_funds_to_return_address(
     Ok(())
 }
 
+/// Calculate distribution statistics from accumulated rewards.
+pub fn calculate_distribution_statistics(
+    combined_rewards: &HashMap<RewardsAddress, Amount>,
+) -> DistributionStatistics {
+    let total_amount: Amount = combined_rewards
+        .values()
+        .copied()
+        .fold(Amount::ZERO, |acc, amount| acc.saturating_add(amount));
+
+    let total_recipients = combined_rewards.len();
+    let mut distribution_percentages = HashMap::new();
+
+    // Calculate percentage for each address
+    if total_amount > Amount::ZERO {
+        for (address, amount) in combined_rewards.iter() {
+            let percentage = (f64::from(amount) / f64::from(total_amount)) * 100.0;
+            distribution_percentages.insert(*address, percentage);
+        }
+    }
+
+    DistributionStatistics {
+        total_amount,
+        total_recipients,
+        distribution_percentages,
+    }
+}
+
 /// Pays out the rewards in the rewards map and then resets all rewards again.
 pub async fn payout_rewards(
     wallet: Wallet,
@@ -186,6 +221,25 @@ pub async fn payout_rewards(
         let entry = combined_rewards.entry(address).or_insert(Amount::ZERO);
         *entry = entry.saturating_add(amount);
     }
+
+    // Calculate distribution statistics
+    let stats = calculate_distribution_statistics(&combined_rewards);
+    
+    // Log distribution statistics
+    tracing::info!("=== Distribution Statistics ===");
+    tracing::info!("Total amount to distribute: {}", stats.total_amount);
+    tracing::info!("Total recipients: {}", stats.total_recipients);
+    tracing::info!("Distribution breakdown:");
+    
+    // Sort by percentage descending for better readability
+    let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
+    sorted_stats.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+    
+    for (address, percentage) in sorted_stats.iter() {
+        let amount = combined_rewards.get(*address);
+        tracing::info!("  {address} -> {amount:?} ({:.4}%)", percentage);
+    }
+    tracing::info!("================================");
 
     let total_amount: Amount = combined_rewards
         .values()

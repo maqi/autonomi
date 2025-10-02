@@ -5,8 +5,13 @@ use autonomi::client::quote::DataTypes;
 use autonomi::networking::version::PackageVersion;
 use autonomi::networking::PeerInfo;
 use autonomi::{Amount, Client, QuoteHash, RewardsAddress, Wallet};
+use chrono::Local;
 use futures::future::join_all;
+use libp2p::{Multiaddr, PeerId};
 use std::collections::{HashMap, VecDeque};
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{self, Duration};
@@ -19,6 +24,14 @@ const MAX_CHUNK_SIZE: usize = 4_194_304;
 /// Represents a single rewards distribution round.
 pub type RewardDistribution = HashMap<RewardsAddress, Amount>;
 pub type RewardDistributionRounds = Arc<Mutex<VecDeque<RewardDistribution>>>;
+
+/// Distribution statistics for a payout round.
+#[derive(Debug, Clone)]
+pub struct DistributionStatistics {
+    pub total_amount: Amount,
+    pub total_recipients: usize,
+    pub distribution_percentages: HashMap<RewardsAddress, f64>,
+}
 
 /// Run the service.
 pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
@@ -168,6 +181,33 @@ pub async fn send_all_funds_to_return_address(
     Ok(())
 }
 
+/// Calculate distribution statistics from accumulated rewards.
+pub fn calculate_distribution_statistics(
+    combined_rewards: &HashMap<RewardsAddress, Amount>,
+) -> DistributionStatistics {
+    let total_amount: Amount = combined_rewards
+        .values()
+        .copied()
+        .fold(Amount::ZERO, |acc, amount| acc.saturating_add(amount));
+
+    let total_recipients = combined_rewards.len();
+    let mut distribution_percentages = HashMap::new();
+
+    // Calculate percentage for each address
+    if total_amount > Amount::ZERO {
+        for (address, amount) in combined_rewards.iter() {
+            let percentage = (f64::from(amount) / f64::from(total_amount)) * 100.0;
+            distribution_percentages.insert(*address, percentage);
+        }
+    }
+
+    DistributionStatistics {
+        total_amount,
+        total_recipients,
+        distribution_percentages,
+    }
+}
+
 /// Pays out the rewards in the rewards map and then resets all rewards again.
 pub async fn payout_rewards(
     wallet: Wallet,
@@ -186,6 +226,25 @@ pub async fn payout_rewards(
         let entry = combined_rewards.entry(address).or_insert(Amount::ZERO);
         *entry = entry.saturating_add(amount);
     }
+
+    // Calculate distribution statistics
+    let stats = calculate_distribution_statistics(&combined_rewards);
+    
+    // Log distribution statistics
+    tracing::info!("=== Distribution Statistics ===");
+    tracing::info!("Total amount to distribute: {}", stats.total_amount);
+    tracing::info!("Total recipients: {}", stats.total_recipients);
+    tracing::info!("Distribution breakdown:");
+    
+    // Sort by percentage descending for better readability
+    let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
+    sorted_stats.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+    
+    for (address, percentage) in sorted_stats.iter() {
+        let amount = combined_rewards.get(*address);
+        tracing::info!("  {address} -> {amount:?} ({:.4}%)", percentage);
+    }
+    tracing::info!("================================");
 
     let total_amount: Amount = combined_rewards
         .values()
@@ -289,6 +348,54 @@ pub async fn start_reward_distribution_round(
     Ok(())
 }
 
+/// Write peers with quotes data to a CSV file.
+/// Creates a folder structure: peers_data/YYYYMMDD/timestamp.csv
+fn write_peers_to_csv(
+    peers_data: &Vec<(PeerId, Vec<Multiaddr>, RewardsAddress)>,
+) -> eyre::Result<()> {
+    let now = Local::now();
+    
+    // Create date folder in format YYYYMMDD
+    let date_folder = now.format("%Y%m%d").to_string();
+    let base_path = PathBuf::from("peers_data");
+    let date_path = base_path.join(&date_folder);
+    
+    // Create directories if they don't exist
+    fs::create_dir_all(&date_path)?;
+    
+    // Create filename with timestamp
+    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+    let filename = format!("{}.csv", timestamp);
+    let file_path = date_path.join(filename);
+    
+    // Create and write to the CSV file
+    let mut file = fs::File::create(&file_path)?;
+    
+    // Write CSV header
+    writeln!(file, "reward_address,peer_id,peer_addrs")?;
+    
+    // Write data rows
+    for (peer_id, peer_addrs, reward_address) in peers_data {
+        let addrs_str = peer_addrs
+            .iter()
+            .map(|addr| addr.to_string())
+            .collect::<Vec<_>>()
+            .join(";");
+        
+        writeln!(
+            file,
+            "{},{},\"{}\"",
+            reward_address,
+            peer_id,
+            addrs_str
+        )?;
+    }
+    
+    tracing::info!("Wrote {} peers to CSV file: {:?}", peers_data.len(), file_path);
+    
+    Ok(())
+}
+
 /// Pick random peers currently on the network.
 pub async fn pick_random_network_peer_reward_addresses(
     client: &Client,
@@ -312,9 +419,14 @@ pub async fn pick_random_network_peer_reward_addresses(
         .flat_map(|(_, quotes)| {
             quotes
                 .into_iter()
-                .map(|(peer_id, peer_addrs, quote)| (peer_id, peer_addrs, quote.rewards_address))
+                .map(|(peer_id, peer_addrs, quote)| (peer_id, peer_addrs.0, quote.rewards_address))
         })
         .collect();
+
+    // Write peers data to CSV file
+    if let Err(err) = write_peers_to_csv(&peers_with_quotes) {
+        tracing::error!("Failed to write peers data to CSV: {:?}", err);
+    }
 
     let pre_filtered_amount = peers_with_quotes.len();
 
@@ -329,7 +441,7 @@ pub async fn pick_random_network_peer_reward_addresses(
                     Duration::from_secs(5),
                     client.get_node_version(PeerInfo {
                         peer_id,
-                        addrs: peer_addrs.0,
+                        addrs: peer_addrs,
                     }),
                 )
                 .await;

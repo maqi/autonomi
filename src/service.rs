@@ -229,17 +229,17 @@ pub async fn payout_rewards(
 
     // Calculate distribution statistics
     let stats = calculate_distribution_statistics(&combined_rewards);
-    
+
     // Log distribution statistics
     tracing::info!("=== Distribution Statistics ===");
     tracing::info!("Total amount to distribute: {}", stats.total_amount);
     tracing::info!("Total recipients: {}", stats.total_recipients);
     tracing::info!("Distribution breakdown:");
-    
+
     // Sort by percentage descending for better readability
     let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
     sorted_stats.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
-    
+
     for (address, percentage) in sorted_stats.iter() {
         let amount = combined_rewards.get(*address);
         tracing::info!("  {address} -> {amount:?} ({:.4}%)", percentage);
@@ -354,26 +354,26 @@ fn write_peers_to_csv(
     peers_data: &Vec<(PeerId, Vec<Multiaddr>, RewardsAddress)>,
 ) -> eyre::Result<()> {
     let now = Local::now();
-    
+
     // Create date folder in format YYYYMMDD
     let date_folder = now.format("%Y%m%d").to_string();
     let base_path = PathBuf::from("peers_data");
     let date_path = base_path.join(&date_folder);
-    
+
     // Create directories if they don't exist
     fs::create_dir_all(&date_path)?;
-    
+
     // Create filename with timestamp
     let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("{}.csv", timestamp);
     let file_path = date_path.join(filename);
-    
+
     // Create and write to the CSV file
     let mut file = fs::File::create(&file_path)?;
-    
+
     // Write CSV header
     writeln!(file, "reward_address,peer_id,peer_addrs")?;
-    
+
     // Write data rows
     for (peer_id, peer_addrs, reward_address) in peers_data {
         let addrs_str = peer_addrs
@@ -381,18 +381,16 @@ fn write_peers_to_csv(
             .map(|addr| addr.to_string())
             .collect::<Vec<_>>()
             .join(";");
-        
-        writeln!(
-            file,
-            "{},{},\"{}\"",
-            reward_address,
-            peer_id,
-            addrs_str
-        )?;
+
+        writeln!(file, "{},{},\"{}\"", reward_address, peer_id, addrs_str)?;
     }
-    
-    tracing::info!("Wrote {} peers to CSV file: {:?}", peers_data.len(), file_path);
-    
+
+    tracing::info!(
+        "Wrote {} peers to CSV file: {:?}",
+        peers_data.len(),
+        file_path
+    );
+
     Ok(())
 }
 
@@ -404,23 +402,46 @@ pub async fn pick_random_network_peer_reward_addresses(
 ) -> eyre::Result<Vec<RewardsAddress>> {
     let random_network_addresses: Vec<XorName> = (0..amount).map(|_| random_address()).collect();
 
-    // Get all closest nodes.
-    let results = join_all(random_network_addresses.into_iter().map(|rna| async move {
-        client
-            .get_raw_quotes(DataTypes::Chunk, std::iter::once((rna, MAX_CHUNK_SIZE)))
-            .await
-    }))
-    .await;
+    // Parallelize get_closest_to_address calls
+    let closest_nodes_futures = random_network_addresses
+        .into_iter()
+        .map(|rna| async move {
+            match client.get_closest_to_address(rna).await {
+                Ok(closest_nodes) => Some((rna, closest_nodes)),
+                Err(_) => None,
+            }
+        });
 
-    let peers_with_quotes: Vec<_> = results
+    let closest_nodes_groups: Vec<_> = join_all(closest_nodes_futures)
+        .await
         .into_iter()
         .flatten()
-        .filter_map(|res| res.ok())
-        .flat_map(|(_, quotes)| {
-            quotes
+        .collect();
+
+    // Parallelize get_raw_quote_from_peer calls
+    let quote_futures = closest_nodes_groups
+        .into_iter()
+        .flat_map(|(rna, closest_nodes)| {
+            closest_nodes
                 .into_iter()
-                .map(|(peer_id, peer_addrs, quote)| (peer_id, peer_addrs.0, quote.rewards_address))
+                .map(move |peer| (rna, peer))
         })
+        .map(|(rna, peer)| async move {
+            match client
+                .get_raw_quote_from_peer(rna, peer, DataTypes::Chunk, MAX_CHUNK_SIZE)
+                .await
+            {
+                Ok(Some((peer_id, peer_addresses, quote))) => {
+                    Some((peer_id, peer_addresses.0, quote.rewards_address))
+                }
+                _ => None,
+            }
+        });
+
+    let peers_with_quotes: Vec<_> = join_all(quote_futures)
+        .await
+        .into_iter()
+        .flatten()
         .collect();
 
     // Write peers data to CSV file

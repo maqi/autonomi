@@ -36,7 +36,7 @@ pub struct DistributionStatistics {
 /// Run the service.
 pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
     let shared_client: Arc<RwLock<Client>> =
-        Arc::new(RwLock::new(create_client_with_retries(&config).await));
+        Arc::new(RwLock::new(create_client_with_retries(&config).await?));
 
     let rewards_distribution_rounds: RewardDistributionRounds = Default::default();
 
@@ -95,10 +95,15 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
 
                     tracing::info!("Rewards paid out.");
 
-                    let client = create_client_with_retries(&config_clone).await;
-                    *shared_client_clone.write().await = client;
-
-                    tracing::info!("Updated client.");
+                    match create_client_with_retries(&config_clone).await {
+                        Ok(client) => {
+                            *shared_client_clone.write().await = client;
+                            tracing::info!("Updated client.");
+                        }
+                        Err(err) => {
+                            tracing::error!("Failed to update client after payout: {err:?}. Skipping client replacement.");
+                        }
+                    }
                 });
             }
             _ = update_min_version.tick() => {
@@ -121,7 +126,7 @@ pub async fn create_client(config: &Config) -> eyre::Result<Client> {
     }
 }
 
-pub async fn create_client_with_retries(config: &Config) -> Client {
+pub async fn create_client_with_retries(config: &Config) -> eyre::Result<Client> {
     let mut attempts = 0;
 
     loop {
@@ -129,14 +134,15 @@ pub async fn create_client_with_retries(config: &Config) -> Client {
 
         match create_client(config).await {
             Ok(client) => {
-                break client;
+                return Ok(client);
             }
             Err(err) => {
                 tracing::error!("Failed to create client: {err:?}. Attempt {attempts} / 4");
 
-                // Should never happen.
                 if attempts >= 4 {
-                    panic!("Failed to create client after {attempts} attempts");
+                    return Err(eyre::eyre!(
+                        "Failed to create client after {attempts} attempts: {err:?}"
+                    ));
                 }
 
                 // Wait for a short duration before retrying

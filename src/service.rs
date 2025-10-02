@@ -34,7 +34,7 @@ pub struct DistributionStatistics {
 }
 
 /// Run the service.
-pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
+pub async fn run(config: Config, wallet: Wallet, is_observor_mode: bool) -> eyre::Result<()> {
     let shared_client: Arc<RwLock<Client>> =
         Arc::new(RwLock::new(create_client_with_retries(&config).await?));
 
@@ -90,7 +90,7 @@ pub async fn run(config: Config, wallet: Wallet) -> eyre::Result<()> {
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
 
                 tokio::spawn(async move {
-                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone).await
+                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone, is_observor_mode).await
                         .inspect_err(|err| tracing::error!("Error paying out rewards: {err:?}"));
 
                     tracing::info!("Rewards paid out.");
@@ -214,53 +214,19 @@ pub fn calculate_distribution_statistics(
     }
 }
 
-/// Pays out the rewards in the rewards map and then resets all rewards again.
-pub async fn payout_rewards(
-    wallet: Wallet,
-    rewards_distribution_rounds: RewardDistributionRounds,
-) -> eyre::Result<()> {
-    let mut rewards_distribution_rounds_lock = rewards_distribution_rounds.lock().await;
-
-    let reward_rounds_to_payout: Vec<_> = rewards_distribution_rounds_lock.drain(..).collect();
-
-    drop(rewards_distribution_rounds_lock);
-
-    let mut combined_rewards: HashMap<RewardsAddress, Amount> = HashMap::new();
-
-    // Combine rewards for the same address.
-    for (address, amount) in reward_rounds_to_payout.clone().into_iter().flatten() {
-        let entry = combined_rewards.entry(address).or_insert(Amount::ZERO);
-        *entry = entry.saturating_add(amount);
-    }
-
-    // Calculate distribution statistics
-    let stats = calculate_distribution_statistics(&combined_rewards);
-
-    // Log distribution statistics
-    tracing::info!("=== Distribution Statistics ===");
-    tracing::info!("Total amount to distribute: {}", stats.total_amount);
-    tracing::info!("Total recipients: {}", stats.total_recipients);
-    tracing::info!("Distribution breakdown:");
-
-    // Sort by percentage descending for better readability
-    let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
-    sorted_stats.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-    for (address, percentage) in sorted_stats.iter() {
-        let amount = combined_rewards.get(*address);
-        tracing::info!("  {address} -> {amount:?} ({:.4}%)", percentage);
-    }
-    tracing::info!("================================");
-
+/// Execute quote payments for the combined rewards.
+/// Returns failed payments that should be retried.
+async fn execute_quote_payments(
+    wallet: &Wallet,
+    combined_rewards: HashMap<RewardsAddress, Amount>,
+) -> eyre::Result<Option<RewardDistribution>> {
     let total_amount: Amount = combined_rewards
         .values()
         .copied()
         .fold(Amount::ZERO, |acc, amount| acc.saturating_add(amount));
-
-    let token_balance = wallet.balance_of_tokens().await?;
-
     tracing::debug!("Total amount to be paid out: {}", total_amount);
 
+    let token_balance = wallet.balance_of_tokens().await?;
     if token_balance < total_amount {
         tracing::warn!("Not enough tokens to pay out rewards. Skipping payout.");
 
@@ -271,13 +237,8 @@ pub async fn payout_rewards(
             wallet.address()
         );
 
-        // Add the distribution rounds back in.
-        rewards_distribution_rounds
-            .lock()
-            .await
-            .extend(reward_rounds_to_payout);
-
-        return Ok(());
+        // Return None to indicate the entire payment should be retried
+        return Ok(None);
     }
 
     // Gather all the rewards as quote payments.
@@ -308,11 +269,77 @@ pub async fn payout_rewards(
             .map(|(_, address, amount)| (address, amount))
             .collect();
 
-        // Add the distribution rounds back in.
-        rewards_distribution_rounds
-            .lock()
-            .await
-            .extend(vec![retry_rewards_round]);
+        return Ok(Some(retry_rewards_round));
+    }
+
+    Ok(Some(HashMap::new()))
+}
+
+/// Pays out the rewards in the rewards map and then resets all rewards again.
+pub async fn payout_rewards(
+    wallet: Wallet,
+    rewards_distribution_rounds: RewardDistributionRounds,
+    is_observor_mode: bool,
+) -> eyre::Result<()> {
+    let mut rewards_distribution_rounds_lock = rewards_distribution_rounds.lock().await;
+
+    let reward_rounds_to_payout: Vec<_> = rewards_distribution_rounds_lock.drain(..).collect();
+
+    drop(rewards_distribution_rounds_lock);
+
+    let mut combined_rewards: HashMap<RewardsAddress, Amount> = HashMap::new();
+
+    // Combine rewards for the same address.
+    for (address, amount) in reward_rounds_to_payout.clone().into_iter().flatten() {
+        let entry = combined_rewards.entry(address).or_insert(Amount::ZERO);
+        *entry = entry.saturating_add(amount);
+    }
+
+    // Calculate distribution statistics
+    let stats = calculate_distribution_statistics(&combined_rewards);
+    
+    // Log distribution statistics
+    tracing::info!("=== Distribution Statistics ===");
+    tracing::info!("Total amount to distribute: {}", stats.total_amount);
+    tracing::info!("Total recipients: {}", stats.total_recipients);
+    tracing::info!("Distribution breakdown:");
+    
+    // Sort by percentage descending for better readability
+    let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
+    sorted_stats.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+    
+    for (address, percentage) in sorted_stats.iter() {
+        let amount = combined_rewards.get(*address);
+        tracing::info!("  {address} -> {amount:?} ({:.4}%)", percentage);
+    }
+    tracing::info!("================================");
+
+    // Observers to carry out network scan only shall not execute the following payout code block
+    if is_observor_mode {
+        return Ok(());
+    }
+
+    // Execute the payment
+    let payment_result = execute_quote_payments(&wallet, combined_rewards).await?;
+
+    match payment_result {
+        None => {
+            // Insufficient balance - add all rounds back for retry
+            rewards_distribution_rounds
+                .lock()
+                .await
+                .extend(reward_rounds_to_payout);
+        }
+        Some(retry_round) if !retry_round.is_empty() => {
+            // Partial failure - add failed payments back for retry
+            rewards_distribution_rounds
+                .lock()
+                .await
+                .extend(vec![retry_round]);
+        }
+        Some(_) => {
+            // Success - nothing to retry
+        }
     }
 
     Ok(())

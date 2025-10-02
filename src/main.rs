@@ -18,6 +18,7 @@ async fn main() -> eyre::Result<()> {
     // Tries to get the network from env first `EVM_NETWORK`.
     let network = autonomi::Network::new(false).unwrap_or_default();
 
+    let mut is_observor_mode = false;
     // Create a wallet for the service.
     //
     // Get the private key from ENV or generate a random new one.
@@ -26,6 +27,7 @@ async fn main() -> eyre::Result<()> {
             eyre!("Invalid private key format. Please provide a valid 64-character hex string.")
         })?
     } else {
+        is_observor_mode = true;
         Wallet::new_with_random_wallet(network)
     };
 
@@ -41,5 +43,5 @@ async fn main() -> eyre::Result<()> {
     println!("Return wallet address: {}", config.return_address);
 
     // Start the service.
-    service::run(config, wallet).await
+    service::run(config, wallet, is_observor_mode).await
 }

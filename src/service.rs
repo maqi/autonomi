@@ -552,6 +552,51 @@ fn extract_ip_from_addr(addr: &str) -> Option<String> {
     None
 }
 
+/// Write peer addresses to a separate file.
+/// Creates a folder structure: peers_addrs/timestamp.txt
+fn write_peer_addrs_to_file(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
+    let now = Local::now();
+
+    // Create directory for peer addresses
+    let base_path = PathBuf::from("peers_addrs");
+    fs::create_dir_all(&base_path)?;
+
+    // Create filename with timestamp
+    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+    let filename = format!("{}.txt", timestamp);
+    let file_path = base_path.join(filename);
+
+    // Create and write to the file
+    let mut file = fs::File::create(&file_path)?;
+
+    // Write header
+    writeln!(file, "# Peer Addresses")?;
+    writeln!(file, "# Timestamp: {}", now.format("%Y-%m-%d %H:%M:%S"))?;
+    writeln!(file, "#")?;
+    writeln!(file, "# Format: peer_id | reward_address | addresses")?;
+    writeln!(file, " ")?;
+
+    // Write data rows
+    for entry in peers_data {
+        let addrs_str = entry
+            .peer_addrs
+            .iter()
+            .map(|addr| addr.to_string())
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        writeln!(
+            file,
+            "{} | {} | {}",
+            entry.peer_id,
+            entry.reward_address,
+            addrs_str
+        )?;
+    }
+
+    Ok(())
+}
+
 /// Write peers with quotes data to a CSV file.
 /// Creates a folder structure: peers_data/YYYYMMDD/timestamp.csv
 fn write_peers_to_csv(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
@@ -576,32 +621,29 @@ fn write_peers_to_csv(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
     // Write CSV header
     writeln!(
         file,
-        "timestamp_nanos,reward_address,peer_id,IP,peer_addrs,node_version,version_check_passed,finally_selected"
+        "timestamp_nanos,reward_address,peer_id,IP,node_version,version_check_passed,finally_selected"
     )?;
 
     // Write data rows
     for entry in peers_data {
-        let addrs_str = entry
-            .peer_addrs
-            .iter()
-            .map(|addr| addr.to_string())
-            .collect::<Vec<_>>()
-            .join(";");
-
         let ip = parse_ip_from_multiaddrs(&entry.peer_addrs);
 
         writeln!(
             file,
-            "{},{},[{}],{},\"{}\",{},{},{}",
+            "{},{},[{}],{},{},{},{}",
             entry.timestamp_nanos,
             entry.reward_address,
             entry.peer_id,
             ip,
-            addrs_str,
             entry.node_version,
             entry.version_check_passed,
             entry.finally_selected
         )?;
+    }
+
+    // Write peer addresses to separate file
+    if let Err(err) = write_peer_addrs_to_file(peers_data) {
+        tracing::error!("Failed to write peer addresses to file: {:?}", err);
     }
 
     Ok(())

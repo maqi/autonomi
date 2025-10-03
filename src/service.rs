@@ -470,6 +470,88 @@ struct PeerCsvEntry {
     finally_selected: bool,
 }
 
+/// Check if an IP address is a local/private address
+fn is_local_ip(ip: &str) -> bool {
+    if let Ok(addr) = ip.parse::<std::net::Ipv4Addr>() {
+        let octets = addr.octets();
+        // Check for common private IP ranges
+        match octets[0] {
+            10 => true,                                      // 10.0.0.0/8
+            172 if (16..=31).contains(&octets[1]) => true,   // 172.16.0.0/12
+            192 if octets[1] == 168 => true,                 // 192.168.0.0/16
+            127 => true,                                      // 127.0.0.0/8 (localhost)
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
+/// Parse IP address from a list of multiaddresses
+/// Returns:
+/// - The public IP address if available
+/// - "Relayed" if all addresses contain p2p-circuit
+/// - "Local" if only local IP addresses are present
+fn parse_ip_from_multiaddrs(addrs: &[Multiaddr]) -> String {
+    let mut public_ips = Vec::new();
+    let mut local_ips = Vec::new();
+    let mut all_relayed = true;
+    let mut has_non_relayed = false;
+
+    for addr in addrs {
+        let addr_str = addr.to_string();
+        
+        // Check if this address is relayed
+        let is_relayed = addr_str.contains("p2p-circuit");
+        
+        if !is_relayed {
+            has_non_relayed = true;
+            all_relayed = false;
+            
+            // Extract IP from address like "/ip4/116.202.83.229/udp/..."
+            if let Some(ip) = extract_ip_from_addr(&addr_str) {
+                if is_local_ip(&ip) {
+                    local_ips.push(ip);
+                } else {
+                    public_ips.push(ip);
+                }
+            }
+        }
+    }
+
+    // If all addresses are relayed, return "Relayed"
+    if all_relayed && !has_non_relayed {
+        return "Relayed".to_string();
+    }
+
+    // Prefer public IPs over local IPs
+    if let Some(ip) = public_ips.first() {
+        return ip.clone();
+    }
+
+    // If only local IPs are present
+    if let Some(_ip) = local_ips.first() {
+        return "Local".to_string();
+    }
+
+    // Fallback
+    "Unknown".to_string()
+}
+
+/// Extract IP address from a multiaddr string
+fn extract_ip_from_addr(addr: &str) -> Option<String> {
+    // Look for /ip4/xxx.xxx.xxx.xxx/ pattern
+    if let Some(start) = addr.find("/ip4/") {
+        let ip_start = start + 5; // length of "/ip4/"
+        let remaining = &addr[ip_start..];
+        
+        if let Some(end) = remaining.find('/') {
+            return Some(remaining[..end].to_string());
+        }
+    }
+    None
+}
+
 /// Write peers with quotes data to a CSV file.
 /// Creates a folder structure: peers_data/YYYYMMDD/timestamp.csv
 fn write_peers_to_csv(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
@@ -494,7 +576,7 @@ fn write_peers_to_csv(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
     // Write CSV header
     writeln!(
         file,
-        "timestamp_nanos,reward_address,peer_id,peer_addrs,node_version,version_check_passed,finally_selected"
+        "timestamp_nanos,reward_address,peer_id,IP,peer_addrs,node_version,version_check_passed,finally_selected"
     )?;
 
     // Write data rows
@@ -506,12 +588,15 @@ fn write_peers_to_csv(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
             .collect::<Vec<_>>()
             .join(";");
 
+        let ip = parse_ip_from_multiaddrs(&entry.peer_addrs);
+
         writeln!(
             file,
-            "{},{},[{}],\"{}\",{},{},{}",
+            "{},{},[{}],{},\"{}\",{},{},{}",
             entry.timestamp_nanos,
             entry.reward_address,
             entry.peer_id,
+            ip,
             addrs_str,
             entry.node_version,
             entry.version_check_passed,
@@ -700,5 +785,127 @@ pub async fn update_min_package_version(min_package_version: Arc<RwLock<PackageV
         }
     } else {
         tracing::error!("Failed to fetch minimum package version file.");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_local_ip() {
+        // Private IP ranges
+        assert!(is_local_ip("192.168.1.1"));
+        assert!(is_local_ip("192.168.0.100"));
+        assert!(is_local_ip("10.0.0.1"));
+        assert!(is_local_ip("10.255.255.254"));
+        assert!(is_local_ip("172.16.0.1"));
+        assert!(is_local_ip("172.31.255.254"));
+        assert!(is_local_ip("127.0.0.1"));
+
+        // Public IPs
+        assert!(!is_local_ip("8.8.8.8"));
+        assert!(!is_local_ip("116.202.83.229"));
+        assert!(!is_local_ip("45.139.197.105"));
+        assert!(!is_local_ip("78.46.46.54"));
+        assert!(!is_local_ip("172.15.0.1")); // Just outside 172.16-31 range
+        assert!(!is_local_ip("172.32.0.1")); // Just outside 172.16-31 range
+    }
+
+    #[test]
+    fn test_extract_ip_from_addr() {
+        assert_eq!(
+            extract_ip_from_addr("/ip4/116.202.83.229/udp/36821/quic-v1"),
+            Some("116.202.83.229".to_string())
+        );
+        assert_eq!(
+            extract_ip_from_addr("/ip4/192.168.2.1/udp/16132/quic-v1/p2p/12D3KooW..."),
+            Some("192.168.2.1".to_string())
+        );
+        assert_eq!(
+            extract_ip_from_addr("/ip4/78.46.46.54/udp/16132/quic-v1/p2p/12D3KooWM7QMZeXUrU5i1JxM8JygWwMsBT8kguogzop8a8Ri6Sj6"),
+            Some("78.46.46.54".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_ip_normal_case() {
+        // Normal case: multiple addresses with same public IP
+        let addrs: Vec<Multiaddr> = vec![
+            "/ip4/116.202.83.229/udp/36821/quic-v1/p2p/12D3KooWRLVqhk3T1wkZBFitppp7f5TqYJ4YtgQiZS8tEJBnvDyG"
+                .parse()
+                .unwrap(),
+            "/ip4/116.202.83.229/udp/41019/quic-v1/p2p/12D3KooWRLVqhk3T1wkZBFitppp7f5TqYJ4YtgQiZS8tEJBnvDyG"
+                .parse()
+                .unwrap(),
+        ];
+        assert_eq!(parse_ip_from_multiaddrs(&addrs), "116.202.83.229");
+    }
+
+    #[test]
+    fn test_parse_ip_all_relayed() {
+        // All addresses contain p2p-circuit
+        let addrs: Vec<Multiaddr> = vec![
+            "/ip4/45.139.197.105/udp/39344/quic-v1/p2p/12D3KooWBRowi9xBbqzm8ABYGxFKU1ggVCshoGo43XRt5BocgPv1/p2p-circuit/p2p/12D3KooWKjAsC2qVmGDXZvXvevTAXxXyE1ijZ5ZCdGmaWyqFv3hJ"
+                .parse()
+                .unwrap(),
+            "/ip4/213.91.236.32/udp/57986/quic-v1/p2p/12D3KooWFVxFyPxy8nadeJvHGhc1bAsyU6hMGTTXNjhxop99NH1s/p2p-circuit/p2p/12D3KooWKjAsC2qVmGDXZvXvevTAXxXyE1ijZ5ZCdGmaWyqFv3hJ"
+                .parse()
+                .unwrap(),
+        ];
+        assert_eq!(parse_ip_from_multiaddrs(&addrs), "Relayed");
+    }
+
+    #[test]
+    fn test_parse_ip_mixed_relayed() {
+        // One relayed, one not relayed - should use the non-relayed IP
+        let addrs: Vec<Multiaddr> = vec![
+            "/ip4/45.139.197.105/udp/39344/quic-v1/p2p/12D3KooWBRowi9xBbqzm8ABYGxFKU1ggVCshoGo43XRt5BocgPv1/p2p-circuit/p2p/12D3KooWKjAsC2qVmGDXZvXvevTAXxXyE1ijZ5ZCdGmaWyqFv3hJ"
+                .parse()
+                .unwrap(),
+            "/ip4/78.46.46.54/udp/16132/quic-v1/p2p/12D3KooWM7QMZeXUrU5i1JxM8JygWwMsBT8kguogzop8a8Ri6Sj6"
+                .parse()
+                .unwrap(),
+        ];
+        assert_eq!(parse_ip_from_multiaddrs(&addrs), "78.46.46.54");
+    }
+
+    #[test]
+    fn test_parse_ip_with_local_and_public() {
+        // Mix of local and public IPs - should prefer public
+        let addrs: Vec<Multiaddr> = vec![
+            "/ip4/78.46.46.54/udp/16132/quic-v1/p2p/12D3KooWM7QMZeXUrU5i1JxM8JygWwMsBT8kguogzop8a8Ri6Sj6"
+                .parse()
+                .unwrap(),
+            "/ip4/192.168.2.1/udp/16132/quic-v1/p2p/12D3KooWM7QMZeXUrU5i1JxM8JygWwMsBT8kguogzop8a8Ri6Sj6"
+                .parse()
+                .unwrap(),
+        ];
+        assert_eq!(parse_ip_from_multiaddrs(&addrs), "78.46.46.54");
+    }
+
+    #[test]
+    fn test_parse_ip_only_local() {
+        // Only local IP addresses
+        let addrs: Vec<Multiaddr> = vec![
+            "/ip4/192.168.2.1/udp/43761/quic-v1/p2p/12D3KooWEuzcwb4YVYo4uoWBvX8aaCYwGK4qfCpM1UhE4LKYKmFQ"
+                .parse()
+                .unwrap(),
+        ];
+        assert_eq!(parse_ip_from_multiaddrs(&addrs), "Local");
+    }
+
+    #[test]
+    fn test_parse_ip_multiple_local() {
+        // Multiple local IP addresses
+        let addrs: Vec<Multiaddr> = vec![
+            "/ip4/192.168.1.1/udp/43761/quic-v1/p2p/12D3KooWEuzcwb4YVYo4uoWBvX8aaCYwGK4qfCpM1UhE4LKYKmFQ"
+                .parse()
+                .unwrap(),
+            "/ip4/10.0.0.5/udp/43761/quic-v1/p2p/12D3KooWEuzcwb4YVYo4uoWBvX8aaCYwGK4qfCpM1UhE4LKYKmFQ"
+                .parse()
+                .unwrap(),
+        ];
+        assert_eq!(parse_ip_from_multiaddrs(&addrs), "Local");
     }
 }

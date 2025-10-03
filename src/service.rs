@@ -28,8 +28,6 @@ pub type RewardDistributionRounds = Arc<Mutex<VecDeque<RewardDistribution>>>;
 /// Distribution statistics for a payout round.
 #[derive(Debug, Clone)]
 pub struct DistributionStatistics {
-    pub total_amount: Amount,
-    pub total_recipients: usize,
     pub distribution_percentages: HashMap<RewardsAddress, f64>,
 }
 
@@ -196,7 +194,6 @@ pub fn calculate_distribution_statistics(
         .copied()
         .fold(Amount::ZERO, |acc, amount| acc.saturating_add(amount));
 
-    let total_recipients = combined_rewards.len();
     let mut distribution_percentages = HashMap::new();
 
     // Calculate percentage for each address
@@ -208,10 +205,66 @@ pub fn calculate_distribution_statistics(
     }
 
     DistributionStatistics {
-        total_amount,
-        total_recipients,
         distribution_percentages,
     }
+}
+
+/// Flush distribution statistics to a CSV file.
+/// Creates a file: distribution_stats/YYMMDD_HHMMSS.csv
+fn flush_distribution_stats_to_disk(
+    stats: &DistributionStatistics,
+    combined_rewards: &HashMap<RewardsAddress, Amount>,
+) -> eyre::Result<()> {
+    let now = Local::now();
+
+    // Create directory for distribution stats
+    let base_path = PathBuf::from("distribution_stats");
+    fs::create_dir_all(&base_path)?;
+
+    // Create filename with timestamp in format DDMMYY_HHMMSS
+    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+    let filename = format!("{}.csv", timestamp);
+    let file_path = base_path.join(filename);
+
+    // Create and write to the CSV file
+    let mut file = fs::File::create(&file_path)?;
+
+    // Write CSV header
+    writeln!(file, "reward_address,amount,percentage")?;
+
+    // Sort by percentage descending for better readability
+    let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
+    sorted_stats.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Write data rows
+    for (address, percentage) in sorted_stats {
+        let amount = combined_rewards.get(address).unwrap_or(&Amount::ZERO);
+        writeln!(file, "{address},{amount},{percentage:.4}")?;
+    }
+
+    tracing::info!(
+        "Wrote distribution statistics to CSV file: {:?}",
+        file_path
+    );
+
+    Ok(())
+}
+
+/// Calculate distribution statistics and flush to disk.
+/// This is a convenience function that combines both operations.
+pub fn calculate_and_flush_distribution_statistics(
+    combined_rewards: &HashMap<RewardsAddress, Amount>,
+) -> eyre::Result<()> {
+    let stats = calculate_distribution_statistics(combined_rewards);
+
+    if let Err(err) = flush_distribution_stats_to_disk(&stats, combined_rewards) {
+        tracing::error!(
+            "Failed to write distribution statistics to disk: {:?}",
+            err
+        );
+    }
+
+    Ok(())
 }
 
 /// Execute quote payments for the combined rewards.
@@ -295,24 +348,8 @@ pub async fn payout_rewards(
         *entry = entry.saturating_add(amount);
     }
 
-    // Calculate distribution statistics
-    let stats = calculate_distribution_statistics(&combined_rewards);
-    
-    // Log distribution statistics
-    tracing::info!("=== Distribution Statistics ===");
-    tracing::info!("Total amount to distribute: {}", stats.total_amount);
-    tracing::info!("Total recipients: {}", stats.total_recipients);
-    tracing::info!("Distribution breakdown:");
-    
-    // Sort by percentage descending for better readability
-    let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
-    sorted_stats.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
-    
-    for (address, percentage) in sorted_stats.iter() {
-        let amount = combined_rewards.get(*address);
-        tracing::info!("  {address} -> {amount:?} ({:.4}%)", percentage);
-    }
-    tracing::info!("================================");
+    // Calculate distribution statistics and flush to disk
+    calculate_and_flush_distribution_statistics(&combined_rewards)?;
 
     // Observers to carry out network scan only shall not execute the following payout code block
     if is_observor_mode {

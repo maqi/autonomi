@@ -3,11 +3,10 @@ use crate::utils::{random_address, usize_to_u8_array};
 use crate::version_file::fetch_min_package_version;
 use autonomi::client::quote::DataTypes;
 use autonomi::networking::version::PackageVersion;
-use autonomi::networking::PeerInfo;
+use autonomi::networking::{Multiaddr, PeerId, PeerInfo};
 use autonomi::{Amount, Client, QuoteHash, RewardsAddress, Wallet};
 use chrono::Local;
 use futures::future::join_all;
-use libp2p::{Multiaddr, PeerId};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::Write;
@@ -454,12 +453,6 @@ fn write_peers_to_csv(
 
         writeln!(file, "{},{},\"{}\"", reward_address, peer_id, addrs_str)?;
     }
-
-    tracing::info!(
-        "Wrote {} peers to CSV file: {:?}",
-        peers_data.len(),
-        file_path
-    );
 
     Ok(())
 }

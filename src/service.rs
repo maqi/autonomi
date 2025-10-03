@@ -417,11 +417,21 @@ pub async fn start_reward_distribution_round(
     Ok(())
 }
 
+/// Peer information for CSV export
+#[derive(Debug, Clone)]
+struct PeerCsvEntry {
+    timestamp_nanos: u128,
+    reward_address: RewardsAddress,
+    peer_id: PeerId,
+    peer_addrs: Vec<Multiaddr>,
+    node_version: String,
+    version_check_passed: bool,
+    finally_selected: bool,
+}
+
 /// Write peers with quotes data to a CSV file.
 /// Creates a folder structure: peers_data/YYYYMMDD/timestamp.csv
-fn write_peers_to_csv(
-    peers_data: &Vec<(PeerId, Vec<Multiaddr>, RewardsAddress)>,
-) -> eyre::Result<()> {
+fn write_peers_to_csv(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
     let now = Local::now();
 
     // Create date folder in format YYYYMMDD
@@ -441,17 +451,31 @@ fn write_peers_to_csv(
     let mut file = fs::File::create(&file_path)?;
 
     // Write CSV header
-    writeln!(file, "reward_address,peer_id,peer_addrs")?;
+    writeln!(
+        file,
+        "timestamp_nanos,reward_address,peer_id,peer_addrs,node_version,version_check_passed,finally_selected"
+    )?;
 
     // Write data rows
-    for (peer_id, peer_addrs, reward_address) in peers_data {
-        let addrs_str = peer_addrs
+    for entry in peers_data {
+        let addrs_str = entry
+            .peer_addrs
             .iter()
             .map(|addr| addr.to_string())
             .collect::<Vec<_>>()
             .join(";");
 
-        writeln!(file, "{},{},\"{}\"", reward_address, peer_id, addrs_str)?;
+        writeln!(
+            file,
+            "{},{},[{}],\"{}\",{},{},{}",
+            entry.timestamp_nanos,
+            entry.reward_address,
+            entry.peer_id,
+            addrs_str,
+            entry.node_version,
+            entry.version_check_passed,
+            entry.finally_selected
+        )?;
     }
 
     Ok(())
@@ -463,6 +487,13 @@ pub async fn pick_random_network_peer_reward_addresses(
     amount: usize,
     min_version_pack: &PackageVersion,
 ) -> eyre::Result<Vec<RewardsAddress>> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let collection_start = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
     let random_network_addresses: Vec<XorName> = (0..amount).map(|_| random_address()).collect();
 
     // Parallelize get_closest_to_address calls
@@ -507,42 +538,60 @@ pub async fn pick_random_network_peer_reward_addresses(
         .flatten()
         .collect();
 
-    // Write peers data to CSV file
-    if let Err(err) = write_peers_to_csv(&peers_with_quotes) {
-        tracing::error!("Failed to write peers data to CSV: {:?}", err);
-    }
-
     let pre_filtered_amount = peers_with_quotes.len();
 
-    // Filter out ineligible nodes based on their version (parallelized).
+    // Check version for all peers and collect results (parallelized).
     let version_checks = join_all(peers_with_quotes.into_iter().map(
         |(peer_id, peer_addrs, rewards_address)| {
             let client = client.clone();
             let min_version_pack = *min_version_pack;
             async move {
                 // Timeout after 5 seconds.
-                let version = tokio::time::timeout(
+                let version_result = tokio::time::timeout(
                     Duration::from_secs(5),
                     client.get_node_version(PeerInfo {
                         peer_id,
-                        addrs: peer_addrs,
+                        addrs: peer_addrs.clone(),
                     }),
                 )
                 .await;
 
-                if let Ok(Ok(version)) = version {
-                    if version.is_minimum(&min_version_pack) {
-                        return Some((peer_id, rewards_address));
+                let (version_str, version_check_passed) = match version_result {
+                    Ok(Ok(version)) => {
+                        let passed = version.is_minimum(&min_version_pack);
+                        (version.to_string(), passed)
                     }
-                }
+                    Ok(Err(err)) => (format!("Error: {}", err), false),
+                    Err(_) => ("Timeout".to_string(), false),
+                };
 
-                None
+                (peer_id, peer_addrs, rewards_address, version_str, version_check_passed)
             }
         },
     ))
     .await;
 
-    let eligible_nodes: Vec<_> = version_checks.into_iter().flatten().collect();
+    // Separate eligible nodes and prepare CSV entries
+    let mut eligible_nodes = Vec::new();
+    let mut all_peer_entries: HashMap<PeerId, PeerCsvEntry> = HashMap::new();
+
+    for (peer_id, peer_addrs, rewards_address, version_str, version_check_passed) in version_checks {
+        // Create CSV entry (initially not selected)
+        let entry = PeerCsvEntry {
+            timestamp_nanos: collection_start,
+            reward_address: rewards_address,
+            peer_id,
+            peer_addrs,
+            node_version: version_str,
+            version_check_passed,
+            finally_selected: false,
+        };
+        all_peer_entries.insert(peer_id, entry);
+
+        if version_check_passed {
+            eligible_nodes.push((peer_id, rewards_address));
+        }
+    }
 
     let post_filtered_amount = eligible_nodes.len();
 
@@ -552,29 +601,44 @@ pub async fn pick_random_network_peer_reward_addresses(
         pre_filtered_amount - post_filtered_amount
     );
 
-    // Early exit if we have enough nodes
-    if eligible_nodes.len() >= amount {
+    // Select final reward addresses
+    let reward_addresses: Vec<RewardsAddress> = if eligible_nodes.len() >= amount {
         use xor_name::rand::{seq::SliceRandom, thread_rng};
         let mut rng = thread_rng();
-        let mut eligible_nodes = eligible_nodes;
         eligible_nodes.shuffle(&mut rng);
 
-        let reward_addresses: Vec<RewardsAddress> = eligible_nodes
+        eligible_nodes
             .into_iter()
             .take(amount)
-            .map(|(_, rewards_address)| rewards_address)
-            .collect();
+            .map(|(peer_id, rewards_address)| {
+                // Mark as selected
+                if let Some(entry) = all_peer_entries.get_mut(&peer_id) {
+                    entry.finally_selected = true;
+                }
+                rewards_address
+            })
+            .collect()
+    } else {
+        // If we don't have enough nodes, use all available
+        tracing::error!("Could not get the requested amount of random nodes. Will continue with the set that we got of length: {}.", eligible_nodes.len());
 
-        return Ok(reward_addresses);
+        eligible_nodes
+            .into_iter()
+            .map(|(peer_id, rewards_address)| {
+                // Mark as selected
+                if let Some(entry) = all_peer_entries.get_mut(&peer_id) {
+                    entry.finally_selected = true;
+                }
+                rewards_address
+            })
+            .collect()
+    };
+
+    // Write peers data to CSV file
+    let csv_entries: Vec<PeerCsvEntry> = all_peer_entries.into_values().collect();
+    if let Err(err) = write_peers_to_csv(&csv_entries) {
+        tracing::error!("Failed to write peers data to CSV: {:?}", err);
     }
-
-    // If we don't have enough nodes, use all available
-    tracing::error!("Could not get the requested amount of random nodes. Will continue with the set that we got of length: {}.", eligible_nodes.len());
-
-    let reward_addresses: Vec<RewardsAddress> = eligible_nodes
-        .into_iter()
-        .map(|(_, rewards_address)| rewards_address)
-        .collect();
 
     Ok(reward_addresses)
 }

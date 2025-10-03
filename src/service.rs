@@ -85,9 +85,10 @@ pub async fn run(config: Config, wallet: Wallet, is_observor_mode: bool) -> eyre
                 let config_clone = config.clone();
                 let wallet_clone = wallet.clone();
                 let rewards_distribution_rounds_clone = rewards_distribution_rounds.clone();
+                let min_package_version_clone = *min_package_version.read().await;
 
                 tokio::spawn(async move {
-                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone, is_observor_mode).await
+                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone, is_observor_mode, &config_clone, &min_package_version_clone).await
                         .inspect_err(|err| tracing::error!("Error paying out rewards: {err:?}"));
 
                     tracing::info!("Rewards paid out.");
@@ -213,6 +214,9 @@ pub fn calculate_distribution_statistics(
 fn flush_distribution_stats_to_disk(
     stats: &DistributionStatistics,
     combined_rewards: &HashMap<RewardsAddress, Amount>,
+    timestamp_nanos: u128,
+    min_package_version: &PackageVersion,
+    total_expected_emissions: Amount,
 ) -> eyre::Result<()> {
     let now = Local::now();
 
@@ -220,7 +224,7 @@ fn flush_distribution_stats_to_disk(
     let base_path = PathBuf::from("distribution_stats");
     fs::create_dir_all(&base_path)?;
 
-    // Create filename with timestamp in format DDMMYY_HHMMSS
+    // Create filename with timestamp in format YYYYMMDD_HHMMSS
     let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("{}.csv", timestamp);
     let file_path = base_path.join(filename);
@@ -229,7 +233,10 @@ fn flush_distribution_stats_to_disk(
     let mut file = fs::File::create(&file_path)?;
 
     // Write CSV header
-    writeln!(file, "reward_address,amount,percentage")?;
+    writeln!(
+        file,
+        "timestamp_nanos,reward_address,amount,percentage,min_package_version,total_expected_emissions"
+    )?;
 
     // Sort by percentage descending for better readability
     let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
@@ -238,7 +245,16 @@ fn flush_distribution_stats_to_disk(
     // Write data rows
     for (address, percentage) in sorted_stats {
         let amount = combined_rewards.get(address).unwrap_or(&Amount::ZERO);
-        writeln!(file, "{address},{amount},{percentage:.4}")?;
+        writeln!(
+            file,
+            "{},{},{},{:.4},{},{}",
+            timestamp_nanos,
+            address,
+            amount,
+            percentage,
+            min_package_version,
+            total_expected_emissions
+        )?;
     }
 
     tracing::info!(
@@ -253,10 +269,33 @@ fn flush_distribution_stats_to_disk(
 /// This is a convenience function that combines both operations.
 pub fn calculate_and_flush_distribution_statistics(
     combined_rewards: &HashMap<RewardsAddress, Amount>,
+    config: &Config,
+    min_package_version: &PackageVersion,
 ) -> eyre::Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let timestamp_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
+    // Calculate total expected emissions
+    // Formula: (payout_interval_secs / reward_interval_secs) * reward_peers_amount * reward_amount
+    let rounds_per_payout = config.payout_interval_secs / config.reward_interval_secs;
+    let total_expected_emissions = config
+        .reward_amount
+        .saturating_mul(Amount::from(config.reward_peers_amount as u64))
+        .saturating_mul(Amount::from(rounds_per_payout as u64));
+
     let stats = calculate_distribution_statistics(combined_rewards);
 
-    if let Err(err) = flush_distribution_stats_to_disk(&stats, combined_rewards) {
+    if let Err(err) = flush_distribution_stats_to_disk(
+        &stats,
+        combined_rewards,
+        timestamp_nanos,
+        min_package_version,
+        total_expected_emissions,
+    ) {
         tracing::error!(
             "Failed to write distribution statistics to disk: {:?}",
             err
@@ -332,6 +371,8 @@ pub async fn payout_rewards(
     wallet: Wallet,
     rewards_distribution_rounds: RewardDistributionRounds,
     is_observor_mode: bool,
+    config: &Config,
+    min_package_version: &PackageVersion,
 ) -> eyre::Result<()> {
     let mut rewards_distribution_rounds_lock = rewards_distribution_rounds.lock().await;
 
@@ -348,7 +389,7 @@ pub async fn payout_rewards(
     }
 
     // Calculate distribution statistics and flush to disk
-    calculate_and_flush_distribution_statistics(&combined_rewards)?;
+    calculate_and_flush_distribution_statistics(&combined_rewards, config, min_package_version)?;
 
     // Observers to carry out network scan only shall not execute the following payout code block
     if is_observor_mode {

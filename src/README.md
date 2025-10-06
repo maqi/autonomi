@@ -25,7 +25,12 @@ This service distributes ANT token rewards to random nodes on the Autonomi netwo
    ./target/release/ant_rewards_service
    ```
 
-## Usage
+## Observor Usage
+
+The application can be used to simulate the emission network scanning, but without payout.
+To do that, just no to setup the `PRIVATE_KEY` env, and launch service as normal.
+
+## Emission Usage
 
 The application accepts various command-line arguments to configure the reward distribution functionality:
 

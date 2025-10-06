@@ -9,9 +9,9 @@ use chrono::Local;
 use futures::future::join_all;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{self, Duration};
 use xor_name::XorName;
@@ -210,33 +210,19 @@ pub fn calculate_distribution_statistics(
 }
 
 /// Flush distribution statistics to a CSV file.
-/// Creates a file: distribution_stats/YYMMDD_HHMMSS.csv
+/// Creates a folder structure: distribution_stats/YYYYMMDD/YYYYMMDD_HHMMSS.csv
 fn flush_distribution_stats_to_disk(
     stats: &DistributionStatistics,
     combined_rewards: &HashMap<RewardsAddress, Amount>,
-    timestamp_nanos: u128,
+    mut timestamp_nanos: u128,
     min_package_version: &PackageVersion,
     total_expected_emissions: Amount,
 ) -> eyre::Result<()> {
-    let now = Local::now();
+    // Build CSV content
+    let mut csv_content = String::new();
 
-    // Create directory for distribution stats
-    let base_path = PathBuf::from("distribution_stats");
-    fs::create_dir_all(&base_path)?;
-
-    // Create filename with timestamp in format YYYYMMDD_HHMMSS
-    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("{}.csv", timestamp);
-    let file_path = base_path.join(filename);
-
-    // Create and write to the CSV file
-    let mut file = fs::File::create(&file_path)?;
-
-    // Write CSV header
-    writeln!(
-        file,
-        "timestamp_nanos,reward_address,amount,percentage,min_package_version,total_expected_emissions"
-    )?;
+    // CSV header
+    csv_content.push_str("timestamp_nanos,reward_address,amount,percentage,min_package_version,total_expected_emissions\n");
 
     // Sort by percentage descending for better readability
     let mut sorted_stats: Vec<_> = stats.distribution_percentages.iter().collect();
@@ -245,17 +231,20 @@ fn flush_distribution_stats_to_disk(
     // Write data rows
     for (address, percentage) in sorted_stats {
         let amount = combined_rewards.get(address).unwrap_or(&Amount::ZERO);
-        writeln!(
-            file,
-            "{},{},{},{:.4},{},{}",
+        timestamp_nanos += 1;
+        csv_content.push_str(&format!(
+            "{},{},{},{:.4},{},{}\n",
             timestamp_nanos,
             address,
             amount,
             percentage,
             min_package_version,
             total_expected_emissions
-        )?;
+        ));
     }
+
+    // Flush to disk
+    let file_path = flush_csv_to_disk("distribution_stats", csv_content)?;
 
     tracing::info!(
         "Wrote distribution statistics to CSV file: {:?}",
@@ -265,6 +254,35 @@ fn flush_distribution_stats_to_disk(
     Ok(())
 }
 
+/// Helper function to flush CSV content to disk.
+/// Creates folder structure: <report_type>/YYYYMMDD/YYYYMMDD_HHMMSS.csv
+/// Also writes to <report_type>.csv in the current directory (overwriting old content)
+fn flush_csv_to_disk(report_type: &str, csv_content: String) -> eyre::Result<PathBuf> {
+    let now = Local::now();
+
+    // Create date folder in format YYYYMMDD
+    let date_folder = now.format("%Y%m%d").to_string();
+    let base_path = PathBuf::from(report_type);
+    let date_path = base_path.join(&date_folder);
+
+    // Create directories if they don't exist
+    fs::create_dir_all(&date_path)?;
+
+    // Create filename with timestamp in format YYYYMMDD_HHMMSS
+    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+    let filename = format!("{}.csv", timestamp);
+    let file_path = date_path.join(filename);
+
+    // Write content to timestamped archive file
+    fs::write(&file_path, &csv_content)?;
+
+    // Also write to current file in the current directory
+    let current_file_path = PathBuf::from(format!("{}.csv", report_type));
+    fs::write(&current_file_path, &csv_content)?;
+
+    Ok(file_path)
+}
+
 /// Calculate distribution statistics and flush to disk.
 /// This is a convenience function that combines both operations.
 pub fn calculate_and_flush_distribution_statistics(
@@ -272,8 +290,6 @@ pub fn calculate_and_flush_distribution_statistics(
     config: &Config,
     min_package_version: &PackageVersion,
 ) -> eyre::Result<()> {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     let timestamp_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -461,7 +477,6 @@ pub async fn start_reward_distribution_round(
 /// Peer information for CSV export
 #[derive(Debug, Clone)]
 struct PeerCsvEntry {
-    timestamp_nanos: u128,
     reward_address: RewardsAddress,
     peer_id: PeerId,
     peer_addrs: Vec<Multiaddr>,
@@ -519,9 +534,9 @@ fn parse_ip_from_multiaddrs(addrs: &[Multiaddr]) -> String {
         }
     }
 
-    // If all addresses are relayed, return "Relayed"
+    // If all addresses are relayed, return "0.0.0.0"
     if all_relayed && !has_non_relayed {
-        return "Relayed".to_string();
+        return "0.0.0.0".to_string();
     }
 
     // Prefer public IPs over local IPs
@@ -529,13 +544,13 @@ fn parse_ip_from_multiaddrs(addrs: &[Multiaddr]) -> String {
         return ip.clone();
     }
 
-    // If only local IPs are present
+    // If only local IPs are present, return " "
     if let Some(_ip) = local_ips.first() {
-        return "Local".to_string();
+        return " ".to_string();
     }
 
     // Fallback
-    "Unknown".to_string()
+    "1.1.1.1".to_string()
 }
 
 /// Extract IP address from a multiaddr string
@@ -553,28 +568,18 @@ fn extract_ip_from_addr(addr: &str) -> Option<String> {
 }
 
 /// Write peer addresses to a separate file.
-/// Creates a folder structure: peers_addrs/timestamp.txt
+/// Creates a folder structure: peers_addrs/YYYYMMDD/YYYYMMDD_HHMMSS.csv
 fn write_peer_addrs_to_file(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
-    let now = Local::now();
+    // Build CSV content
+    let mut csv_content = String::new();
 
-    // Create directory for peer addresses
-    let base_path = PathBuf::from("peers_addrs");
-    fs::create_dir_all(&base_path)?;
+    // CSV header
+    csv_content.push_str("timestamp,peer_id,reward_address,addresses\n");
 
-    // Create filename with timestamp
-    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("{}.txt", timestamp);
-    let file_path = base_path.join(filename);
-
-    // Create and write to the file
-    let mut file = fs::File::create(&file_path)?;
-
-    // Write header
-    writeln!(file, "# Peer Addresses")?;
-    writeln!(file, "# Timestamp: {}", now.format("%Y-%m-%d %H:%M:%S"))?;
-    writeln!(file, "#")?;
-    writeln!(file, "# Format: peer_id | reward_address | addresses")?;
-    writeln!(file, " ")?;
+    let mut timestamp_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
 
     // Write data rows
     for entry in peers_data {
@@ -585,61 +590,54 @@ fn write_peer_addrs_to_file(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
             .collect::<Vec<_>>()
             .join("; ");
 
-        writeln!(
-            file,
-            "{} | {} | {}",
+        timestamp_nanos += 1;
+        csv_content.push_str(&format!(
+            "{},{},{},{}\n",
+            timestamp_nanos,
             entry.peer_id,
             entry.reward_address,
             addrs_str
-        )?;
+        ));
     }
+
+    // Flush to disk
+    flush_csv_to_disk("peers_addrs", csv_content)?;
 
     Ok(())
 }
 
 /// Write peers with quotes data to a CSV file.
-/// Creates a folder structure: peers_data/YYYYMMDD/timestamp.csv
+/// Creates a folder structure: peers_data/YYYYMMDD/YYYYMMDD_HHMMSS.csv
 fn write_peers_to_csv(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
-    let now = Local::now();
+    // Build CSV content
+    let mut csv_content = String::new();
 
-    // Create date folder in format YYYYMMDD
-    let date_folder = now.format("%Y%m%d").to_string();
-    let base_path = PathBuf::from("peers_data");
-    let date_path = base_path.join(&date_folder);
+    // CSV header
+    csv_content.push_str("timestamp_nanos,reward_address,peer_id,node_ip,node_version,version_check_passed,finally_selected\n");
 
-    // Create directories if they don't exist
-    fs::create_dir_all(&date_path)?;
-
-    // Create filename with timestamp
-    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("{}.csv", timestamp);
-    let file_path = date_path.join(filename);
-
-    // Create and write to the CSV file
-    let mut file = fs::File::create(&file_path)?;
-
-    // Write CSV header
-    writeln!(
-        file,
-        "timestamp_nanos,reward_address,peer_id,IP,node_version,version_check_passed,finally_selected"
-    )?;
+    let mut timestamp_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
 
     // Write data rows
     for entry in peers_data {
         let ip = parse_ip_from_multiaddrs(&entry.peer_addrs);
-
-        writeln!(
-            file,
-            "{},{},[{}],{},{},{},{}",
-            entry.timestamp_nanos,
+        timestamp_nanos += 1;
+        csv_content.push_str(&format!(
+            "{},{},{},{},{},{},{}\n",
+            timestamp_nanos,
             entry.reward_address,
             entry.peer_id,
             ip,
             entry.node_version,
-            entry.version_check_passed,
-            entry.finally_selected
-        )?;
+            if entry.version_check_passed { 1 } else { 0 },
+            if entry.finally_selected { 1 } else { 0 }
+        ));
     }
+
+    // Flush to disk
+    flush_csv_to_disk("peers_data", csv_content)?;
 
     // Write peer addresses to separate file
     if let Err(err) = write_peer_addrs_to_file(peers_data) {
@@ -655,13 +653,6 @@ pub async fn pick_random_network_peer_reward_addresses(
     amount: usize,
     min_version_pack: &PackageVersion,
 ) -> eyre::Result<Vec<RewardsAddress>> {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    
-    let collection_start = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-
     let random_network_addresses: Vec<XorName> = (0..amount).map(|_| random_address()).collect();
 
     // Parallelize get_closest_to_address calls
@@ -729,8 +720,10 @@ pub async fn pick_random_network_peer_reward_addresses(
                         let passed = version.is_minimum(&min_version_pack);
                         (version.to_string(), passed)
                     }
-                    Ok(Err(err)) => (format!("Error: {}", err), false),
-                    Err(_) => ("Timeout".to_string(), false),
+                    // Peer communication errors
+                    Ok(Err(_err)) => (" ".to_string(), false),
+                    // Timeout of the 5s
+                    Err(_) => (" ".to_string(), false),
                 };
 
                 (peer_id, peer_addrs, rewards_address, version_str, version_check_passed)
@@ -746,7 +739,6 @@ pub async fn pick_random_network_peer_reward_addresses(
     for (peer_id, peer_addrs, rewards_address, version_str, version_check_passed) in version_checks {
         // Create CSV entry (initially not selected)
         let entry = PeerCsvEntry {
-            timestamp_nanos: collection_start,
             reward_address: rewards_address,
             peer_id,
             peer_addrs,

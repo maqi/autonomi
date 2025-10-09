@@ -574,7 +574,7 @@ fn write_peer_addrs_to_file(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
     let mut csv_content = String::new();
 
     // CSV header
-    csv_content.push_str("timestamp,peer_id,reward_address,addresses\n");
+    csv_content.push_str("timestamp,peer_id,reward_address,maxLibP2P,addresses\n");
 
     let mut timestamp_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -583,20 +583,21 @@ fn write_peer_addrs_to_file(peers_data: &[PeerCsvEntry]) -> eyre::Result<()> {
 
     // Write data rows
     for entry in peers_data {
-        let addrs_str = entry
+        let max_libp2p = entry.peer_addrs.len();
+        let first_addr = entry
             .peer_addrs
-            .iter()
+            .first()
             .map(|addr| addr.to_string())
-            .collect::<Vec<_>>()
-            .join("; ");
+            .unwrap_or_default();
 
         timestamp_nanos += 1;
         csv_content.push_str(&format!(
-            "{},{},{},{}\n",
+            "{},{},{},{},{}\n",
             timestamp_nanos,
             entry.peer_id,
             entry.reward_address,
-            addrs_str
+            max_libp2p,
+            first_addr
         ));
     }
 

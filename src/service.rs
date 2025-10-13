@@ -544,9 +544,9 @@ fn parse_ip_from_multiaddrs(addrs: &[Multiaddr]) -> String {
         return ip.clone();
     }
 
-    // If only local IPs are present, return " "
+    // If only local IPs are present, return empty string
     if let Some(_ip) = local_ips.first() {
-        return " ".to_string();
+        return "".to_string();
     }
 
     // Fallback
@@ -722,9 +722,9 @@ pub async fn pick_random_network_peer_reward_addresses(
                         (version.to_string(), passed)
                     }
                     // Peer communication errors
-                    Ok(Err(_err)) => (" ".to_string(), false),
+                    Ok(Err(_err)) => ("".to_string(), false),
                     // Timeout of the 5s
-                    Err(_) => (" ".to_string(), false),
+                    Err(_) => ("".to_string(), false),
                 };
 
                 (peer_id, peer_addrs, rewards_address, version_str, version_check_passed)

@@ -30,6 +30,7 @@ pub(crate) fn upload_exit_code(err: &UploadError) -> i32 {
         UploadError::WalkDir(_) => IO_ERROR,
         UploadError::IoError(_) => IO_ERROR,
         UploadError::PutError(err) => put_error_exit_code(err),
+        UploadError::Encryption(_) => SELF_ENCRYPTION_ERROR,
     }
 }
 
@@ -97,7 +98,7 @@ pub(crate) fn bootstrap_error_exit_code(err: &BootstrapError) -> i32 {
         BootstrapError::NoBootstrapPeersFound => 51,
         BootstrapError::FailedToParseCacheData => 52,
         BootstrapError::CouldNotObtainDataDir => 53,
-        BootstrapError::InvalidBootstrapCacheDir => 53,
+        // BootstrapError::InvalidBootstrapCacheDir => 53,
         BootstrapError::FailedToObtainAddrsFromUrl(_, _) => 54,
         BootstrapError::FailedToParseUrl => 55,
         BootstrapError::Io(_) => IO_ERROR,

@@ -10,9 +10,9 @@ use std::time::Instant;
 
 use crate::AttoTokens;
 use crate::Client;
-use crate::client::encryption::EncryptionStream;
 use crate::client::payment::PaymentOption;
 use crate::client::{GetError, PutError};
+use crate::self_encryption::EncryptionStream;
 
 pub use crate::Bytes;
 pub use crate::client::data_types::chunk::DataMapChunk;
@@ -75,10 +75,7 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn data_stream(
-        &self,
-        data_map: &DataMapChunk,
-    ) -> Result<impl Iterator<Item = Result<Bytes, GetError>> + use<>, GetError> {
+    pub async fn data_stream(&self, data_map: &DataMapChunk) -> Result<DataStream, GetError> {
         info!(
             "Starting streaming fetch of private data from datamap {:?}",
             data_map.0.address()

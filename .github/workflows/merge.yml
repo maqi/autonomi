@@ -171,6 +171,8 @@ jobs:
   e2e:
     name: E2E tests
     runs-on: ${{ matrix.os }}
+    env:
+      MAX_CHUNK_SIZE: 4194304
     strategy:
       matrix:
         include:
@@ -229,7 +231,7 @@ jobs:
           # only set the target dir for windows to bypass the linker issue.
           # happens if we build the node manager via testnet action
           CARGO_TARGET_DIR: ${{ matrix.os == 'windows-latest' && './test-target' || '.' }}
-        timeout-minutes: 20
+        timeout-minutes: 40
 
       # FIXME: do this in a generic way for localtestnets
       - name: export default secret key

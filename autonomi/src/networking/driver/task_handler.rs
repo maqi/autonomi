@@ -48,6 +48,7 @@ pub(crate) struct TaskHandler {
     >,
     get_record: HashMap<QueryId, (OneShotTaskResult<RecordAndHolders>, Quorum)>,
     get_record_accumulator: HashMap<QueryId, HashMap<PeerId, Record>>,
+    get_version: HashMap<OutboundRequestId, OneShotTaskResult<String>>,
 }
 
 impl TaskHandler {
@@ -59,6 +60,7 @@ impl TaskHandler {
             get_cost: Default::default(),
             get_record: Default::default(),
             get_record_accumulator: Default::default(),
+            get_version: Default::default(),
         }
     }
 
@@ -69,7 +71,9 @@ impl TaskHandler {
     }
 
     pub fn contains_query(&self, id: &OutboundRequestId) -> bool {
-        self.get_cost.contains_key(id) || self.put_record_req.contains_key(id)
+        self.get_cost.contains_key(id)
+            || self.put_record_req.contains_key(id)
+            || self.get_version.contains_key(id)
     }
 
     pub fn insert_task(&mut self, id: QueryId, task: NetworkTask) {
@@ -101,6 +105,9 @@ impl TaskHandler {
             }
             NetworkTask::PutRecordReq { resp, .. } => {
                 self.put_record_req.insert(id, resp);
+            }
+            NetworkTask::GetVersion { resp, .. } => {
+                self.get_version.insert(id, resp);
             }
             _ => {}
         }
@@ -154,12 +161,16 @@ impl TaskHandler {
                     holders.insert(peer_id, record.record);
                 }
 
-                // If we have enough holders, finish the task.
+                // If we have enough holders with the same content, finish the task.
                 if let Some((_resp, quorum)) = self.get_record.get(&id) {
                     let expected_holders = get_quorum_amount(quorum);
 
-                    if holders.len() >= expected_holders {
-                        info!("QueryId({id}): got enough holders, finishing task");
+                    if let Some(max_content_holders) = get_max_content_holders_count(holders)
+                        && max_content_holders >= expected_holders
+                    {
+                        info!(
+                            "QueryId({id}): got enough holders with same content, finishing task"
+                        );
                         self.send_get_record_result(id)?;
                         return Ok(true);
                     }
@@ -373,6 +384,25 @@ impl TaskHandler {
         }
     }
 
+    pub fn update_get_version(
+        &mut self,
+        id: OutboundRequestId,
+        version: String,
+    ) -> Result<(), TaskHandlerError> {
+        let responder = self
+            .get_version
+            .remove(&id)
+            .ok_or(TaskHandlerError::UnknownQuery(format!(
+                "OutboundRequestId {id:?}"
+            )))?;
+
+        trace!("OutboundRequestId({id}): got version: {version}");
+        responder
+            .send(Ok(version))
+            .map_err(|_| TaskHandlerError::NetworkClientDropped(format!("{id:?}")))?;
+        Ok(())
+    }
+
     pub fn terminate_query(
         &mut self,
         id: OutboundRequestId,
@@ -434,6 +464,24 @@ impl TaskHandler {
         let holders = self.get_record_accumulator.remove(&id).unwrap_or_default();
         Ok(((responder, quorum), holders))
     }
+}
+
+/// Helper function to get the count of holders that have the most frequent record content
+/// Returns None if there are no holders, otherwise returns the count of holders with the most frequent content
+fn get_max_content_holders_count(holders: &HashMap<PeerId, Record>) -> Option<usize> {
+    if holders.is_empty() {
+        return None;
+    }
+
+    // Group holders by record content and count occurrences
+    let mut content_counts: HashMap<Vec<u8>, usize> = HashMap::new();
+    for record in holders.values() {
+        let content = record.value.clone();
+        *content_counts.entry(content).or_insert(0) += 1;
+    }
+
+    // Return the maximum count
+    content_counts.values().max().copied()
 }
 
 fn verify_quote(

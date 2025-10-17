@@ -11,7 +11,7 @@ use super::resolve_split_records;
 use crate::{
     Amount, AttoTokens, Client,
     client::{
-        GetError, PutError,
+        PutError,
         payment::{PayError, PaymentOption},
         quote::CostError,
     },
@@ -23,6 +23,7 @@ use ant_protocol::{
     storage::{DataTypes, RecordKind, try_deserialize_record, try_serialize_record},
 };
 use libp2p::kad::Record;
+use std::collections::HashSet;
 
 pub use crate::Bytes;
 pub use ant_protocol::storage::{Scratchpad, ScratchpadAddress};
@@ -35,10 +36,13 @@ const SCRATCHPAD_MAX_SIZE: usize = Scratchpad::MAX_SIZE;
 pub enum ScratchpadError {
     #[error("Failed to put scratchpad: {0}")]
     PutError(#[from] PutError),
-    #[error("Payment failure occurred during scratchpad creation.")]
+    #[error("Payment failure occurred during scratchpad creation: {0}")]
     Pay(#[from] PayError),
-    #[error(transparent)]
-    GetError(#[from] GetError),
+    /// Failed to get scratchpad due to network reasons. This excludes Fork, Corrupt, NotFound errors
+    #[error("Failed to get scratchpad: {0}")]
+    GetError(String),
+    #[error("Scratchpad not found at this address: {0:?}")]
+    NotFound(ScratchpadAddress),
     #[error("Scratchpad found at {0:?} was not a valid record.")]
     Corrupt(ScratchpadAddress),
     #[error("Serialization error")]
@@ -57,6 +61,56 @@ pub enum ScratchpadError {
         "Got multiple conflicting scratchpads with the latest version, the fork can be resolved by putting a new scratchpad with a higher counter"
     )]
     Fork(Vec<Scratchpad>),
+}
+
+/// Print detailed fork analysis for conflicting scratchpads
+pub fn print_fork_analysis(
+    conflicting_scratchpads: &[Scratchpad],
+    owner_key: &SecretKey,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut sorted_scratchpads = conflicting_scratchpads.to_vec();
+    sorted_scratchpads.sort_by(|a, b| {
+        hex::encode(a.signature().to_bytes()).cmp(&hex::encode(b.signature().to_bytes()))
+    });
+
+    println!("\nFORK ANALYSIS:");
+    println!("{}", "=".repeat(80));
+    println!(
+        "Found {} conflicting scratchpads:",
+        sorted_scratchpads.len()
+    );
+
+    for (i, scratchpad) in sorted_scratchpads.iter().enumerate() {
+        println!();
+        println!("#{} OF {}:", i + 1, sorted_scratchpads.len());
+        println!("  Counter: {}", scratchpad.counter());
+        println!("  Data type encoding: {}", scratchpad.data_encoding());
+        println!(
+            "  PublicKey/Address: {}",
+            hex::encode(scratchpad.owner().to_bytes())
+        );
+        println!(
+            "  Signature: {}",
+            hex::encode(scratchpad.signature().to_bytes())
+        );
+        println!(
+            "  Scratchpad hash: {}",
+            hex::encode(scratchpad.scratchpad_hash().0)
+        );
+        println!(
+            "  Encrypted data hash: {}",
+            hex::encode(scratchpad.encrypted_data_hash())
+        );
+
+        match scratchpad.decrypt_data(owner_key) {
+            Ok(decrypted_data) => {
+                let data_str = String::from_utf8_lossy(&decrypted_data);
+                println!("  Decrypted data: \"{data_str}\"");
+            }
+            Err(decrypt_err) => println!("  Decryption failed: {decrypt_err}"),
+        }
+    }
+    Ok(())
 }
 
 impl Client {
@@ -85,7 +139,7 @@ impl Client {
             .await
         {
             Ok(maybe_record) => {
-                let record = maybe_record.ok_or(GetError::RecordNotFound)?;
+                let record = maybe_record.ok_or(ScratchpadError::NotFound(*address))?;
                 debug!("Got scratchpad for {scratch_key:?}");
                 return try_deserialize_record::<Scratchpad>(&record)
                     .map_err(|_| ScratchpadError::Corrupt(*address));
@@ -104,13 +158,15 @@ impl Client {
                         a.data_encoding() == b.data_encoding()
                             && a.encrypted_data() == b.encrypted_data()
                     },
-                    |latest: Vec<Scratchpad>| ScratchpadError::Fork(latest),
+                    |latest: HashSet<Scratchpad>| {
+                        ScratchpadError::Fork(latest.into_iter().collect())
+                    },
                     || ScratchpadError::Corrupt(*address),
                 )?
             }
             Err(e) => {
                 warn!("Failed to fetch scratchpad {network_address:?} from network: {e}");
-                return Err(ScratchpadError::GetError(e.into()));
+                return Err(ScratchpadError::GetError(e.to_string()));
             }
         };
 
@@ -136,7 +192,7 @@ impl Client {
             Ok(Some(_)) => Ok(true),
             Ok(None) => Ok(false),
             Err(NetworkError::SplitRecord(..)) => Ok(true),
-            Err(err) => Err(ScratchpadError::GetError(err.into()))
+            Err(err) => Err(ScratchpadError::GetError(err.to_string()))
                 .inspect_err(|err| error!("Error checking scratchpad existence: {err:?}")),
         }
     }
@@ -291,14 +347,8 @@ impl Client {
         let address = ScratchpadAddress::new(owner.public_key());
         let current = match self.scratchpad_get(&address).await {
             Ok(scratchpad) => Some(scratchpad),
-            Err(ScratchpadError::GetError(GetError::RecordNotFound)) => None,
+            Err(ScratchpadError::NotFound(..)) => None,
             // forks should not stop updates as updates are here to resolve forks, hence the max_by_key
-            Err(ScratchpadError::GetError(GetError::Network(NetworkError::SplitRecord(
-                result_map,
-            )))) => result_map
-                .values()
-                .filter_map(|record| try_deserialize_record::<Scratchpad>(record).ok())
-                .max_by_key(|scratchpad: &Scratchpad| scratchpad.counter()),
             Err(ScratchpadError::Fork(scratchpads)) => scratchpads
                 .into_iter()
                 .max_by_key(|scratchpad: &Scratchpad| scratchpad.counter()),

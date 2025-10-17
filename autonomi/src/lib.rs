@@ -37,7 +37,7 @@
 //!
 //! # Data types
 //!
-//! This API gives access to two fundamental types on the network: Chunks and GraphEntry.
+//! This API gives access to the four fundamental types on the network: [`Chunk`], [`Pointer`], [`Scratchpad`] and [`GraphEntry`].
 //!
 //! When we upload data, it's split into chunks using self-encryption, yielding
 //! a 'datamap' allowing us to reconstruct the data again. Any two people that
@@ -100,17 +100,20 @@ pub use bytes::Bytes;
 #[doc(no_inline)] // Place this under 'Re-exports' in the docs.
 pub use libp2p::Multiaddr;
 
+// private helper modules
+pub(crate) mod utils;
+
 #[doc(inline)]
 pub use client::{
     // Client
     Client,
     // Client Configs
-    config::BootstrapCacheConfig,
+    config::Bootstrap,
+    config::BootstrapConfig,
     config::BootstrapError,
     config::ClientConfig,
     config::ClientOperatingStrategy,
     config::InitialPeersConfig,
-
     // Native data types
     data_types::chunk::Chunk,
     data_types::chunk::ChunkAddress,
@@ -120,6 +123,8 @@ pub use client::{
     data_types::pointer::PointerAddress,
     data_types::scratchpad::Scratchpad,
     data_types::scratchpad::ScratchpadAddress,
+    // Payment
+    quote::PaymentMode,
 };
 
 #[cfg(feature = "extension-module")]

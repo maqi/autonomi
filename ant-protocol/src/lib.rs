@@ -117,14 +117,6 @@ impl NetworkAddress {
         None
     }
 
-    /// Try to return the represented `RecordKey`.
-    pub fn as_record_key(&self) -> Option<RecordKey> {
-        match self {
-            NetworkAddress::RecordKey(bytes) => Some(RecordKey::new(bytes)),
-            _ => None,
-        }
-    }
-
     /// Return the convertable `RecordKey`.
     pub fn to_record_key(&self) -> RecordKey {
         match self {

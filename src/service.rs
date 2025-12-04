@@ -1,9 +1,9 @@
 use crate::opt::Config;
-use crate::utils::{random_address, usize_to_u8_array};
+use crate::utils::{random_address, random_u64, usize_to_u8_array};
 use crate::version_file::fetch_min_package_version;
 use autonomi::client::quote::DataTypes;
 use autonomi::networking::version::PackageVersion;
-use autonomi::networking::{Multiaddr, PeerId, PeerInfo};
+use autonomi::networking::{Multiaddr, NetworkAddress, PeerId, PeerInfo};
 use autonomi::{Amount, Client, QuoteHash, RewardsAddress, Wallet};
 use chrono::Local;
 use futures::future::join_all;
@@ -654,14 +654,15 @@ pub async fn pick_random_network_peer_reward_addresses(
     amount: usize,
     min_version_pack: &PackageVersion,
 ) -> eyre::Result<Vec<RewardsAddress>> {
-    let random_network_addresses: Vec<XorName> = (0..amount).map(|_| random_address()).collect();
+    // Generate a random nonce for each close_group
+    let random_network_addresses: Vec<(XorName, u64)> = (0..amount).map(|_| (random_address(), random_u64())).collect();
 
     // Parallelize get_closest_to_address calls
     let closest_nodes_futures = random_network_addresses
         .into_iter()
-        .map(|rna| async move {
-            match client.get_closest_to_address(rna).await {
-                Ok(closest_nodes) => Some((rna, closest_nodes)),
+        .map(|(rna, nonce)| async move {
+            match client.get_closest_to_address(rna, Some(7)).await {
+                Ok(closest_nodes) => Some(((rna, nonce), closest_nodes)),
                 Err(_) => None,
             }
         });
@@ -672,37 +673,85 @@ pub async fn pick_random_network_peer_reward_addresses(
         .flatten()
         .collect();
 
-    // Parallelize get_raw_quote_from_peer calls
-    let quote_futures = closest_nodes_groups
+    // Parallelize get_storage_proofs_from_peer calls
+    let storage_proof_futures = closest_nodes_groups
         .into_iter()
-        .flat_map(|(rna, closest_nodes)| {
+        .flat_map(|((rna, nonce), closest_nodes)| {
             closest_nodes
                 .into_iter()
-                .map(move |peer| (rna, peer))
+                .map(move |peer| (rna, nonce, peer))
         })
-        .map(|(rna, peer)| async move {
+        .map(|(rna, nonce, peer)| async move {
+            let peer_id = peer.peer_id;
+            let peer_addrs = peer.addrs.clone();
+            
             match client
-                .get_raw_quote_from_peer(rna, peer, DataTypes::Chunk, MAX_CHUNK_SIZE)
+                .get_storage_proofs_from_peer(rna, peer, nonce, 5, DataTypes::Chunk, MAX_CHUNK_SIZE)
                 .await
             {
-                Ok(Some((peer_id, peer_addresses, quote))) => {
-                    Some((peer_id, peer_addresses.0, quote.rewards_address))
+                Ok((Some(quote), storage_proofs)) => {
+                    // Extract chunk addresses from storage proofs
+                    let chunk_addresses: Vec<NetworkAddress> = storage_proofs
+                        .into_iter()
+                        .filter_map(|(addr, result)| {
+                            result.ok().map(|_| addr)
+                        })
+                        .collect();
+                    
+                    Some((peer_id, peer_addrs, quote.rewards_address, chunk_addresses, rna))
                 }
                 _ => None,
             }
         });
 
-    let peers_with_quotes: Vec<_> = join_all(quote_futures)
+    let peers_with_storage_proofs: Vec<_> = join_all(storage_proof_futures)
         .await
         .into_iter()
         .flatten()
         .collect();
 
-    let pre_filtered_amount = peers_with_quotes.len();
+    let pre_filtered_amount = peers_with_storage_proofs.len();
+
+    // Group storage proofs by close_group and calculate scores
+    let mut close_group_chunks: HashMap<XorName, Vec<(PeerId, Vec<NetworkAddress>)>> = HashMap::new();
+    for (peer_id, _, _, chunk_addresses, rna) in &peers_with_storage_proofs {
+        close_group_chunks
+            .entry(*rna)
+            .or_default()
+            .push((*peer_id, chunk_addresses.clone()));
+    }
+    
+    // Calculate chunk scores for each close_group
+    let mut peer_scores: HashMap<PeerId, i64> = HashMap::new();
+    
+    for (_rna, peers_chunks) in close_group_chunks {
+        // Count chunk appearances in this close_group
+        let mut chunk_counts: HashMap<NetworkAddress, usize> = HashMap::new();
+        for (_, chunks) in &peers_chunks {
+            for chunk in chunks {
+                *chunk_counts.entry(chunk.clone()).or_insert(0) += 1;
+            }
+        }
+        
+        // Create expectation_list with scores: score = (appear_times - 1) * 10
+        let chunk_scores: HashMap<NetworkAddress, i64> = chunk_counts
+            .into_iter()
+            .map(|(chunk, count)| (chunk, (count.saturating_sub(1) * 10) as i64))
+            .collect();
+        
+        // Assign scores to each peer based on their reported chunks
+        for (peer_id, chunks) in peers_chunks {
+            let peer_score: i64 = chunks
+                .iter()
+                .filter_map(|chunk| chunk_scores.get(chunk))
+                .sum();
+            *peer_scores.entry(peer_id).or_insert(0) += peer_score;
+        }
+    }
 
     // Check version for all peers and collect results (parallelized).
-    let version_checks = join_all(peers_with_quotes.into_iter().map(
-        |(peer_id, peer_addrs, rewards_address)| {
+    let version_checks = join_all(peers_with_storage_proofs.into_iter().map(
+        |(peer_id, peer_addrs, rewards_address, _chunk_addresses, _rna)| {
             let client = client.clone();
             let min_version_pack = *min_version_pack;
             async move {
@@ -762,15 +811,57 @@ pub async fn pick_random_network_peer_reward_addresses(
         pre_filtered_amount - post_filtered_amount
     );
 
-    // Select final reward addresses
+    // Select final reward addresses based on scores
     let reward_addresses: Vec<RewardsAddress> = if eligible_nodes.len() >= amount {
         use xor_name::rand::{seq::SliceRandom, thread_rng};
-        let mut rng = thread_rng();
-        eligible_nodes.shuffle(&mut rng);
-
-        eligible_nodes
+        
+        // Sort nodes by score (descending)
+        let mut scored_nodes: Vec<(PeerId, RewardsAddress, i64)> = eligible_nodes
             .into_iter()
-            .take(amount)
+            .map(|(peer_id, rewards_address)| {
+                let score = peer_scores.get(&peer_id).copied().unwrap_or(0);
+                (peer_id, rewards_address, score)
+            })
+            .collect();
+        
+        scored_nodes.sort_by(|a, b| b.2.cmp(&a.2)); // Sort by score descending
+        
+        let mut selected_nodes = Vec::new();
+        let mut remaining = amount;
+        let mut idx = 0;
+        
+        while remaining > 0 && idx < scored_nodes.len() {
+            let current_score = scored_nodes[idx].2;
+            
+            // Find all nodes with the same score
+            let same_score_end = scored_nodes[idx..]
+                .iter()
+                .position(|(_, _, score)| *score != current_score)
+                .map(|pos| idx + pos)
+                .unwrap_or(scored_nodes.len());
+            
+            let same_score_nodes = &mut scored_nodes[idx..same_score_end];
+            
+            if same_score_nodes.len() <= remaining {
+                // Take all nodes with this score
+                for (peer_id, rewards_address, _) in same_score_nodes.iter() {
+                    selected_nodes.push((*peer_id, *rewards_address));
+                }
+                remaining -= same_score_nodes.len();
+                idx = same_score_end;
+            } else {
+                // Randomly select from tied nodes to fill remaining spots
+                let mut rng = thread_rng();
+                same_score_nodes.shuffle(&mut rng);
+                for (peer_id, rewards_address, _) in same_score_nodes.iter().take(remaining) {
+                    selected_nodes.push((*peer_id, *rewards_address));
+                }
+                remaining = 0;
+            }
+        }
+        
+        selected_nodes
+            .into_iter()
             .map(|(peer_id, rewards_address)| {
                 // Mark as selected
                 if let Some(entry) = all_peer_entries.get_mut(&peer_id) {

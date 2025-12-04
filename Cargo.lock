@@ -812,14 +812,15 @@ dependencies = [
 
 [[package]]
 name = "ant-bootstrap"
-version = "0.2.8"
-source = "git+https://github.com/mickvandijke/autonomi?branch=add-get-raw-quote-from-peer#1e3a8cab86cbc79b5264a583b2577324ad8b65fd"
+version = "0.2.11"
+source = "git+https://github.com/maqi/autonomi?branch=make_get_storage_proofs_from_peer_return_PaymentQuote#5b56cca796b4fec350f80f539e7331fb0d49f418"
 dependencies = [
  "ant-logging",
  "ant-protocol",
  "atomic-write-file",
  "chrono",
  "clap",
+ "custom_debug",
  "dirs-next",
  "futures",
  "libp2p",
@@ -836,7 +837,7 @@ dependencies = [
 [[package]]
 name = "ant-build-info"
 version = "0.1.29"
-source = "git+https://github.com/mickvandijke/autonomi?branch=add-get-raw-quote-from-peer#1e3a8cab86cbc79b5264a583b2577324ad8b65fd"
+source = "git+https://github.com/maqi/autonomi?branch=make_get_storage_proofs_from_peer_return_PaymentQuote#5b56cca796b4fec350f80f539e7331fb0d49f418"
 dependencies = [
  "chrono",
  "tracing",
@@ -846,7 +847,7 @@ dependencies = [
 [[package]]
 name = "ant-evm"
 version = "0.1.17"
-source = "git+https://github.com/mickvandijke/autonomi?branch=add-get-raw-quote-from-peer#1e3a8cab86cbc79b5264a583b2577324ad8b65fd"
+source = "git+https://github.com/maqi/autonomi?branch=make_get_storage_proofs_from_peer_return_PaymentQuote#5b56cca796b4fec350f80f539e7331fb0d49f418"
 dependencies = [
  "custom_debug",
  "evmlib",
@@ -867,7 +868,7 @@ dependencies = [
 [[package]]
 name = "ant-logging"
 version = "0.2.52"
-source = "git+https://github.com/mickvandijke/autonomi?branch=add-get-raw-quote-from-peer#1e3a8cab86cbc79b5264a583b2577324ad8b65fd"
+source = "git+https://github.com/maqi/autonomi?branch=make_get_storage_proofs_from_peer_return_PaymentQuote#5b56cca796b4fec350f80f539e7331fb0d49f418"
 dependencies = [
  "chrono",
  "dirs-next",
@@ -884,7 +885,7 @@ dependencies = [
 [[package]]
 name = "ant-protocol"
 version = "1.0.9"
-source = "git+https://github.com/mickvandijke/autonomi?branch=add-get-raw-quote-from-peer#1e3a8cab86cbc79b5264a583b2577324ad8b65fd"
+source = "git+https://github.com/maqi/autonomi?branch=make_get_storage_proofs_from_peer_return_PaymentQuote#5b56cca796b4fec350f80f539e7331fb0d49f418"
 dependencies = [
  "ant-build-info",
  "ant-evm",
@@ -1246,8 +1247,8 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "autonomi"
-version = "0.6.1"
-source = "git+https://github.com/mickvandijke/autonomi?branch=add-get-raw-quote-from-peer#1e3a8cab86cbc79b5264a583b2577324ad8b65fd"
+version = "0.6.4"
+source = "git+https://github.com/maqi/autonomi?branch=make_get_storage_proofs_from_peer_return_PaymentQuote#5b56cca796b4fec350f80f539e7331fb0d49f418"
 dependencies = [
  "ant-bootstrap",
  "ant-evm",
@@ -1270,7 +1271,7 @@ dependencies = [
  "rayon",
  "rmp-serde",
  "self_encryption 0.30.0",
- "self_encryption 0.34.1",
+ "self_encryption 0.34.3",
  "serde",
  "sha2",
  "thiserror 1.0.69",
@@ -2355,8 +2356,8 @@ dependencies = [
 
 [[package]]
 name = "evmlib"
-version = "0.4.4"
-source = "git+https://github.com/mickvandijke/autonomi?branch=add-get-raw-quote-from-peer#1e3a8cab86cbc79b5264a583b2577324ad8b65fd"
+version = "0.4.5"
+source = "git+https://github.com/maqi/autonomi?branch=make_get_storage_proofs_from_peer_return_PaymentQuote#5b56cca796b4fec350f80f539e7331fb0d49f418"
 dependencies = [
  "alloy",
  "rand 0.8.5",
@@ -5546,9 +5547,9 @@ dependencies = [
 
 [[package]]
 name = "self_encryption"
-version = "0.34.1"
+version = "0.34.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "636a9d557a649b7c30068e270212eb42967384034de9fa8250fbbc55b65b43a7"
+checksum = "45480c8fa045f158ab05f445ce7d0b6dfcb6e3028d91b78013271b48daa435b2"
 dependencies = [
  "aes",
  "bincode",

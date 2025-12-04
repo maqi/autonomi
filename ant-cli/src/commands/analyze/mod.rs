@@ -20,9 +20,10 @@ use autonomi::client::analyze::{Analysis, AnalysisError};
 use autonomi::client::config::CHUNK_DOWNLOAD_BATCH_SIZE;
 use autonomi::client::payment::PaymentOption;
 use autonomi::graph::GraphEntryAddress;
+use ant_protocol::storage::DataTypes;
 use autonomi::{
     Multiaddr, RewardsAddress, SecretKey, Wallet,
-    networking::{NetworkAddress, NetworkError, PeerId, Record},
+    networking::{NetworkAddress, NetworkError, PeerId, PeerQuoteWithStorageProof, Record},
 };
 use color_eyre::eyre::Result;
 use comfy_table::{Cell, CellAlignment, Table};
@@ -39,7 +40,7 @@ const KAD_HOLDERS_QUERY_RANGE: u32 = 20;
 // Upload records in parallel with max concurrency
 const MAX_PARALLEL_UPLOADS: usize = 20;
 
-type PeerResults = Vec<(PeerId, Result<Vec<(NetworkAddress, Result<ant_protocol::messages::ChunkProof, ant_protocol::error::Error>)>, NetworkError>)>;
+type PeerResults = Vec<(PeerId, Result<PeerQuoteWithStorageProof, NetworkError>)>;
 
 /// Status of a closest peer's record for a given address
 #[derive(Debug, Clone)]
@@ -1472,7 +1473,7 @@ async fn perform_network_scan_round(
         
         async move {
             let result = client
-                .get_storage_proofs_from_peer(peer_target_addr, peer_clone, nonce, difficulty)
+                .get_storage_proofs_from_peer(peer_target_addr, peer_clone, nonce, difficulty, DataTypes::Chunk, 0)
                 .await;
             (peer_id, result)
         }
@@ -1489,7 +1490,7 @@ async fn perform_network_scan_round(
     
     for (peer_id, result) in peer_results {
         match result {
-            Ok(storage_proofs) => {
+            Ok((_quote, storage_proofs)) => {
                 if verbose {
                     println!(
                         "Round {round_id}: Peer {peer_id} returned {} proofs",
@@ -2005,10 +2006,10 @@ async fn print_nodes_health(
 
         // Query the peer directly for storage proofs
         match client
-            .get_storage_proofs_from_peer(target_addr.clone(), peer.clone(), nonce, difficulty)
+            .get_storage_proofs_from_peer(target_addr.clone(), peer.clone(), nonce, difficulty, DataTypes::Chunk, 0)
             .await
         {
-            Ok(storage_proofs) => {
+            Ok((_quote, storage_proofs)) => {
                 if storage_proofs.is_empty() {
                     println!("   Status: ⚠️  No storage proofs received");
                 } else {

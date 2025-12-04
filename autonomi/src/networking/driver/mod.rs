@@ -416,12 +416,14 @@ impl NetworkDriver {
                 peer,
                 nonce,
                 difficulty,
+                data_type,
+                data_size,
                 resp,
             } => {
                 let req = Request::Query(Query::GetStoreQuote {
                     key: addr.clone(),
-                    data_type: 0, // Chunk type
-                    data_size: 0, // Not relevant for proof checking
+                    data_type: data_type as u32,
+                    data_size,
                     nonce: Some(ant_protocol::messages::Nonce::from(nonce)),
                     difficulty,
                 });
@@ -437,6 +439,8 @@ impl NetworkDriver {
                         peer,
                         nonce,
                         difficulty,
+                        data_type,
+                        data_size,
                         resp,
                     },
                 );

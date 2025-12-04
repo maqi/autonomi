@@ -8,6 +8,7 @@
 
 use crate::networking::NetworkError;
 use crate::networking::OneShotTaskResult;
+use crate::networking::PeerQuoteWithStorageProof;
 use crate::networking::interface::NetworkTask;
 use crate::networking::utils::get_quorum_amount;
 use ant_evm::PaymentQuote;
@@ -50,7 +51,7 @@ pub(crate) struct TaskHandler {
     get_record_accumulator: HashMap<QueryId, HashMap<PeerId, Record>>,
     get_version: HashMap<OutboundRequestId, OneShotTaskResult<String>>,
     get_record_from_peer: HashMap<OutboundRequestId, OneShotTaskResult<Option<Record>>>,
-    get_storage_proofs_from_peer: HashMap<OutboundRequestId, OneShotTaskResult<Vec<(NetworkAddress, Result<ant_protocol::messages::ChunkProof, ant_protocol::error::Error>)>>>,
+    get_storage_proofs_from_peer: HashMap<OutboundRequestId, OneShotTaskResult<PeerQuoteWithStorageProof>>,
 }
 
 impl TaskHandler {
@@ -456,6 +457,7 @@ impl TaskHandler {
     pub fn update_get_storage_proofs_from_peer(
         &mut self,
         id: OutboundRequestId,
+        quote: Option<PaymentQuote>,
         storage_proofs: Vec<(NetworkAddress, Result<ant_protocol::messages::ChunkProof, ant_protocol::error::Error>)>,
     ) -> Result<(), TaskHandlerError> {
         let responder = self
@@ -467,7 +469,7 @@ impl TaskHandler {
 
         trace!("OutboundRequestId({id}): got {} storage proofs", storage_proofs.len());
         responder
-            .send(Ok(storage_proofs))
+            .send(Ok((quote, storage_proofs)))
             .map_err(|_| TaskHandlerError::NetworkClientDropped(format!("{id:?}")))?;
         Ok(())
     }
@@ -520,7 +522,7 @@ impl TaskHandler {
                 "OutboundRequestId({id}): get storage proofs from peer got fatal error from peer {peer:?}: {error:?}"
             );
             responder
-                .send(Ok(vec![]))
+                .send(Ok((None, vec![])))
                 .map_err(|_| TaskHandlerError::NetworkClientDropped(format!("{id:?}")))?;
         } else {
             trace!(

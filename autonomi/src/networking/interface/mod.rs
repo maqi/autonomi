@@ -6,8 +6,9 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::networking::OneShotTaskResult;
+use crate::networking::{OneShotTaskResult, PeerQuoteWithStorageProof};
 use ant_evm::PaymentQuote;
+use ant_protocol::storage::DataTypes;
 use ant_protocol::NetworkAddress;
 use libp2p::{
     kad::{PeerInfo, Quorum, Record},
@@ -86,13 +87,10 @@ pub(super) enum NetworkTask {
         peer: PeerInfo,
         nonce: u64,
         difficulty: usize,
+        data_type: DataTypes,
+        data_size: usize,
         #[debug(skip)]
-        resp: OneShotTaskResult<
-            Vec<(
-                NetworkAddress,
-                Result<ant_protocol::messages::ChunkProof, ant_protocol::error::Error>,
-            )>,
-        >,
+        resp: OneShotTaskResult<PeerQuoteWithStorageProof>,
     },
     /// Get information about the amount of connections made
     ConnectionsMade {

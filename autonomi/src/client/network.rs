@@ -7,9 +7,10 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::Client;
-use crate::networking::NetworkError;
+use crate::networking::{NetworkError, PeerQuoteWithStorageProof};
 use crate::networking::version::PackageVersion;
 use ant_protocol::NetworkAddress;
+use ant_protocol::storage::DataTypes;
 use libp2p::PeerId;
 use libp2p::kad::{PeerInfo, Quorum, Record};
 
@@ -59,16 +60,18 @@ impl Client {
     }
 
     /// Get storage proofs directly from a specific peer.
-    /// Returns a vector of (NetworkAddress, ChunkProof) tuples
+    /// Returns an optional PaymentQuote and a vector of (NetworkAddress, ChunkProof) tuples
     pub async fn get_storage_proofs_from_peer(
         &self,
         network_address: impl Into<NetworkAddress>,
         peer: PeerInfo,
         nonce: u64,
         difficulty: usize,
-    ) -> Result<Vec<(NetworkAddress, Result<ant_protocol::messages::ChunkProof, ant_protocol::error::Error>)>, NetworkError> {
+        data_type: DataTypes,
+        data_size: usize,
+    ) -> Result<PeerQuoteWithStorageProof, NetworkError> {
         self.network
-            .get_storage_proofs_from_peer(network_address.into(), peer, nonce, difficulty)
+            .get_storage_proofs_from_peer(network_address.into(), peer, nonce, difficulty, data_type, data_size)
             .await
     }
 

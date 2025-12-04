@@ -176,9 +176,9 @@ impl NetworkDriver {
                 storage_proofs,
             }) => {
                 if self.pending_tasks
-                    .update_get_quote(request_id, quote, peer_address).is_err() {
+                    .update_get_quote(request_id, quote.clone(), peer_address).is_err() {
                     self.pending_tasks
-                        .update_get_storage_proofs_from_peer(request_id, storage_proofs)?;
+                        .update_get_storage_proofs_from_peer(request_id, quote.ok(), storage_proofs)?;
                 }
             }
             Response::Query(QueryResponse::PutRecord {

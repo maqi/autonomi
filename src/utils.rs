@@ -1,10 +1,16 @@
 use autonomi::RewardsAddress;
-use xor_name::{rand, XorName};
+use xor_name::{rand::{self, Rng}, XorName};
 
 /// Generate a random XorName.
 pub fn random_address() -> XorName {
     let mut rng = rand::thread_rng();
     XorName::random(&mut rng)
+}
+
+/// Generate a random u64.
+pub fn random_u64() -> u64 {
+    let mut rng = rand::thread_rng();
+    rng.gen()
 }
 
 #[allow(dead_code)]

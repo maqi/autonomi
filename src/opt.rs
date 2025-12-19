@@ -39,6 +39,9 @@ pub(crate) struct Opt {
     #[clap(long)]
     /// Optionally give a specific name for the log file.
     pub log_file_name: Option<String>,
+    #[clap(long, default_value_t = false)]
+    /// Run in observer mode (network scanning only, no payouts).
+    pub observer_mode: bool,
 }
 
 impl Opt {

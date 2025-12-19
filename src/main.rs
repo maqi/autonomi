@@ -18,18 +18,18 @@ async fn main() -> eyre::Result<()> {
     // Tries to get the network from env first `EVM_NETWORK`.
     let network = autonomi::Network::new(false).unwrap_or_default();
 
-    let mut is_observor_mode = false;
     // Create a wallet for the service.
     //
-    // Get the private key from ENV or generate a random new one.
+    // Use PRIVATE_KEY from env if provided, otherwise generate a random wallet.
+    // Observer mode (no payouts) is only enabled when explicitly requested.
     let mut wallet = if let Ok(private_key_str) = std::env::var("PRIVATE_KEY") {
         Wallet::new_from_private_key(network, &private_key_str).map_err(|_| {
             eyre!("Invalid private key format. Please provide a valid 64-character hex string.")
         })?
     } else {
-        is_observor_mode = true;
         Wallet::new_with_random_wallet(network)
     };
+    let is_observer_mode = opt.observer_mode;
 
     // Set fee per gas limit to 0.04 GWEI.
     wallet.set_transaction_config(TransactionConfig {
@@ -43,5 +43,5 @@ async fn main() -> eyre::Result<()> {
     println!("Return wallet address: {}", config.return_address);
 
     // Start the service.
-    service::run(config, wallet, is_observor_mode).await
+    service::run(config, wallet, is_observer_mode).await
 }

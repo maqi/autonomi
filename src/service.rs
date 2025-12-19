@@ -31,7 +31,7 @@ pub struct DistributionStatistics {
 }
 
 /// Run the service.
-pub async fn run(config: Config, wallet: Wallet, is_observor_mode: bool) -> eyre::Result<()> {
+pub async fn run(config: Config, wallet: Wallet, is_observer_mode: bool) -> eyre::Result<()> {
     let shared_client: Arc<RwLock<Client>> =
         Arc::new(RwLock::new(create_client_with_retries(&config).await?));
 
@@ -88,7 +88,7 @@ pub async fn run(config: Config, wallet: Wallet, is_observor_mode: bool) -> eyre
                 let min_package_version_clone = *min_package_version.read().await;
 
                 tokio::spawn(async move {
-                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone, is_observor_mode, &config_clone, &min_package_version_clone).await
+                   let _ = payout_rewards(wallet_clone, rewards_distribution_rounds_clone, is_observer_mode, &config_clone, &min_package_version_clone).await
                         .inspect_err(|err| tracing::error!("Error paying out rewards: {err:?}"));
 
                     tracing::info!("Rewards paid out.");
@@ -386,7 +386,7 @@ async fn execute_quote_payments(
 pub async fn payout_rewards(
     wallet: Wallet,
     rewards_distribution_rounds: RewardDistributionRounds,
-    is_observor_mode: bool,
+    is_observer_mode: bool,
     config: &Config,
     min_package_version: &PackageVersion,
 ) -> eyre::Result<()> {
@@ -408,7 +408,7 @@ pub async fn payout_rewards(
     calculate_and_flush_distribution_statistics(&combined_rewards, config, min_package_version)?;
 
     // Observers to carry out network scan only shall not execute the following payout code block
-    if is_observor_mode {
+    if is_observer_mode {
         return Ok(());
     }
 

@@ -426,7 +426,7 @@ impl Network {
         n: Option<usize>,
     ) -> Result<Vec<(PeerId, Addresses)>> {
         let pretty_key = PrettyPrintKBucketKey(key.as_kbucket_key());
-        debug!("Getting the all closest peers in range of {pretty_key:?}");
+        info!("Getting the all closest peers in range of {key:?}");
         let (sender, receiver) = oneshot::channel();
         self.send_network_swarm_cmd(NetworkSwarmCmd::GetClosestPeersToAddressFromNetwork {
             key: key.clone(),
@@ -435,6 +435,8 @@ impl Network {
         });
 
         let candidates = receiver.await?;
+
+        info!("Getting the all closest peers in range of {key:?} returned with {} kad candidates", candidates.len());
 
         // Error out when fetched result is empty, indicating a timed out network query.
         if candidates.is_empty() {
@@ -494,7 +496,7 @@ impl Network {
                     }
                 }
             } else {
-                info!("Failed to get closest peers from node {responder_peer_id:?}");
+                info!("For candidates of {key:?}, failed to get closest_peers of node {responder_peer_id:?}");
             }
         }
 
@@ -646,8 +648,8 @@ impl Network {
             key.distance(&peer_addr)
         });
 
-        debug!(
-            "Final {} verified candidates sorted by distance to {pretty_key:?}",
+        info!(
+            "For kad candidates of {key:?}, final {} verified candidates sorted by distance to {pretty_key:?}",
             verified_candidates.len()
         );
 
@@ -692,6 +694,8 @@ impl Network {
 
         // This should not be reached given the backoff configuration,
         // but handle it gracefully by returning the timeout error
+        warn!("Get closest peers for {key:?} terminated with backoff completion");
+
         Err(NetworkError::GetClosestTimedOut)
     }
 

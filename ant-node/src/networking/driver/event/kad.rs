@@ -28,7 +28,7 @@ impl SwarmDriver {
                 ref step,
             } => {
                 event_string = "kad_event::get_closest_peers";
-                debug!(
+                info!(
                     "Query task {id:?} of key {:?} returned with peers {:?}, {stats:?} - {step:?}",
                     hex::encode(closest_peers.key.clone()),
                     closest_peers.peers,
@@ -63,7 +63,7 @@ impl SwarmDriver {
                         }
                     }
                 } else {
-                    debug!("Can't locate query task {id:?}, it has likely been completed already.");
+                    info!("Can't locate query task {id:?}, it has likely been completed already.");
                     return Err(NetworkError::ReceivedKademliaEventDropped {
                         query_id: id,
                         event: "GetClosestPeers Ok".to_string(),

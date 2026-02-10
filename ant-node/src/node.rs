@@ -1051,6 +1051,16 @@ impl Node {
             "merkle payment: GetMerkleCandidateQuote for target {key:?}, timestamp: {merkle_payment_timestamp}, data_type: {data_type}, data_size: {data_size}"
         );
 
+        // Simulate 5% failure for testing/observability
+        if thread_rng().gen_range(0..100) < 20 {
+            info!(
+                "merkle payment: simulated GetMerkleCandidateQuote failure for target {key:?} (Failed Merkle Quoting)"
+            );
+            return QueryResponse::GetMerkleCandidateQuote(Err(
+                ProtocolError::GetMerkleCandidateQuoteFailed("Failed Merkle Quoting".to_string()),
+            ));
+        }
+
         // Validate timestamp before signing to prevent committing to invalid times.
         // Nodes will reject proofs with expired/future timestamps during payment verification,
         // so signing such timestamps would create useless quotes that can't be used.

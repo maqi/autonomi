@@ -237,15 +237,18 @@ impl Client {
             info!(
                 "KAD-only fallback: only {got} successful quotes for target {target_address:?}, fetching more peers via get_closest_peers_kad_only to query"
             );
-            let queried_peer_ids: HashSet<libp2p::PeerId> = peer_info_with_distances
+            let queried_peer_ids: HashSet<libp2p::PeerId> = successful_candidates
                 .iter()
-                .map(|(peer_info, _)| peer_info.peer_id)
+                .map(|(peer_id, _)| peer_id.clone())
                 .collect();
             if let Ok(kad_peers) = self
                 .network
                 .get_closest_peers_kad_only(network_addr.clone(), Some(K_VALUE))
                 .await
             {
+                info!(
+                    "KAD-only fallback: got {} peers via get_closest_peers_kad_only", kad_peers.len()
+                );
                 let unqueried: Vec<_> = kad_peers
                     .into_iter()
                     .filter(|p| !queried_peer_ids.contains(&p.peer_id))
@@ -295,6 +298,10 @@ impl Client {
                         successful_candidates.push((peer_id, candidate));
                     }
                 }
+            } else {
+                info!(
+                    "KAD-only fallback: failed with get_closest_peers_kad_only"
+                );
             }
         }
 
